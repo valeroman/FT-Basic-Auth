@@ -29,7 +29,7 @@ class LoginScreen extends StatelessWidget {
                   const Icon(
                     Icons.production_quantity_limits_rounded,
                     color: Colors.white,
-                    size: 100,
+                    size: 70,
                   ),
             
                   const SizedBox( height: 60 ),
@@ -70,7 +70,7 @@ class _LoginForm extends StatelessWidget {
         children: [
 
           const SizedBox( height: 40 ),
-          Text('Login', style: textStyle.titleLarge),
+          Text('Login', style: textStyle.titleMedium),
           const SizedBox( height: 50 ),
 
           const CustomTextFormField(
@@ -97,7 +97,7 @@ class _LoginForm extends StatelessWidget {
             ),
           ),
 
-          const Spacer( flex: 1 ),
+          const Spacer( flex: 2 ),
 
           Row(
             mainAxisAlignment: MainAxisAlignment.center,

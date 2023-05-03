@@ -39,11 +39,11 @@ class RegisterScreen extends StatelessWidget {
                             if ( !context.canPop() ) return;
                             context.pop();
                           }, 
-                          icon: const Icon( Icons.arrow_back_rounded, size: 40, color: Colors.black,),
+                          icon: const Icon( Icons.arrow_back_rounded, size: 25, color: Colors.black,),
                         ),
                       ),
                       const Spacer(flex: 1),
-                      Text('Crear cuenta', style: textStyles.titleLarge?.copyWith(color: Colors.white)),
+                      Text('Crear cuenta', style: textStyles.titleMedium?.copyWith(color: Colors.white)),
                       const Spacer(flex: 2),
                     ],
                   ),
@@ -51,7 +51,7 @@ class RegisterScreen extends StatelessWidget {
                   const SizedBox( height: 80),
             
                   Container(
-                    height: size.height - 100,
+                    height: size.height + 20,
                     width: double.infinity,
                     decoration: BoxDecoration(
                       color: scaffoldBackgroundColor,
