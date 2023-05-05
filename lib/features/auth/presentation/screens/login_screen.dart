@@ -1,6 +1,8 @@
 
+import 'package:basic_auth/features/auth/providers/providers.dart';
 import 'package:basic_auth/features/shared/widgets/widgets.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 class LoginScreen extends StatelessWidget {
@@ -56,11 +58,14 @@ class LoginScreen extends StatelessWidget {
   }
 }
 
-class _LoginForm extends StatelessWidget {
+class _LoginForm extends ConsumerWidget {
   const _LoginForm();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+
+     //* Tener acceso al state del loginFromProvider
+    final loginForm = ref.watch(loginFormProvider);
 
     final textStyle = Theme.of(context).textTheme;
 
@@ -73,15 +78,23 @@ class _LoginForm extends StatelessWidget {
           Text('Login', style: textStyle.titleMedium),
           const SizedBox( height: 50 ),
 
-          const CustomTextFormField(
+          CustomTextFormField(
             label: 'Correo',
             keyboardType: TextInputType.emailAddress,
+            onChanged: ref.read(loginFormProvider.notifier).onEmailChange,
+            errorMessage: loginForm.isFromPosted
+              ? loginForm.email.errorMessage
+              : null,
           ),
           const SizedBox( height: 30 ),
 
-          const CustomTextFormField(
+          CustomTextFormField(
             label: 'Constraseña',
             obscureText: true,
+            onChanged: ref.read(loginFormProvider.notifier).onPasswordChange,
+            errorMessage: loginForm.isFromPosted  
+              ? loginForm.password.errorMessage
+              : null,
           ),
           const SizedBox( height: 30 ),
 
@@ -92,7 +105,7 @@ class _LoginForm extends StatelessWidget {
               text: 'Ingresar',
               buttonColor: Colors.black,
               onPressed: () {
-                
+                ref.read(loginFormProvider.notifier).onFormSubmit();
               },
             ),
           ),
