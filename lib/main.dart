@@ -1,9 +1,11 @@
 import 'package:basic_auth/config/config.dart';
-import 'package:basic_auth/config/router/app_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-void main() {
+void main() async {
+
+  await Environment.initEnvironment();
+
   runApp(
     const ProviderScope(child: MainApp())
   );

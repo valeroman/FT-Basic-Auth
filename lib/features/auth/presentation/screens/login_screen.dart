@@ -1,4 +1,5 @@
 
+import 'package:basic_auth/features/auth/presentation/providers/auth_provider.dart';
 import 'package:basic_auth/features/auth/providers/providers.dart';
 import 'package:basic_auth/features/shared/widgets/widgets.dart';
 import 'package:flutter/material.dart';
@@ -59,13 +60,26 @@ class LoginScreen extends StatelessWidget {
 }
 
 class _LoginForm extends ConsumerWidget {
+
   const _LoginForm();
+
+  void showSnackbar(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message))
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
 
      //* Tener acceso al state del loginFromProvider
     final loginForm = ref.watch(loginFormProvider);
+
+    ref.listen(authProvider, (previous, next) { 
+      if ( next.errorMessage.isEmpty ) return;
+      showSnackbar( context, next.errorMessage );
+    });
 
     final textStyle = Theme.of(context).textTheme;
 
