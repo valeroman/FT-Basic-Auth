@@ -1,17 +1,30 @@
 
 
+import 'package:basic_auth/features/auth/presentation/providers/auth_provider.dart';
 import 'package:basic_auth/features/shared/shared.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:formz/formz.dart';
 
 //! 3 - StateNotifierProvider - consume afuera
 final registerFormProvider = StateNotifierProvider.autoDispose<RegisterFormNotifier, RegisterFormState>((ref) {
-  return RegisterFormNotifier();
+  
+  //* Tener la referencia al metodo del register
+  final registerCallback = ref.watch(authProvider.notifier).registerUser;
+
+
+  return RegisterFormNotifier(
+    registerCallback: registerCallback
+  );
 });
 
 //! 2 - Como implementar el notifier
 class RegisterFormNotifier extends StateNotifier<RegisterFormState> {
-  RegisterFormNotifier(): super( RegisterFormState() );
+
+  final Function(String, String, String) registerCallback;
+
+  RegisterFormNotifier({
+    required this.registerCallback
+  }): super( RegisterFormState() );
 
   //* Metodos
   onEmailChange( String value ) {
@@ -46,12 +59,13 @@ class RegisterFormNotifier extends StateNotifier<RegisterFormState> {
     );
   }
 
-  onFormSubmit() {
+  onFormSubmit() async {
     _touchEveryField();
 
     if ( !state.isValid ) return;
 
-    print(state);
+    await registerCallback( state.email.value, state.password.value, state.username.value );
+    
 
   }
 

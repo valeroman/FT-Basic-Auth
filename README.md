@@ -1773,3 +1773,517 @@ class AuthState {
   );
 }
 ```
+
+#### Register desde el Provider
+
+- Abrimos el archivo `auth_provider.dart` y agregamos el siguiente código para el register:
+
+```dart
+
+import 'package:basic_auth/features/auth/domain/domain.dart';
+import 'package:basic_auth/features/auth/infrastructure/infrastructure.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
+
+  final authRepository = AuthRepositoryImpl();
+
+  return AuthNotifier(authRepository: authRepository);
+});
+
+class AuthNotifier extends StateNotifier<AuthState> {
+
+  final AuthRepository authRepository;
+
+  AuthNotifier({
+    required this.authRepository
+  }): super( AuthState() );
+
+  Future<void> loginUser( String email, String password  ) async {
+
+    await Future.delayed( const Duration(milliseconds: 500) );
+
+    try {
+      final user = await authRepository.login(email, password);
+      _setLoggedUser(user);
+    } on CustomError catch (e) {
+      logout( e.message );
+    } catch (e) {
+      logout('Error no controlado');
+    }
+
+  }
+
+  void registerUser( String email, String password, String fullName  ) async {
+    
+    await Future.delayed( const Duration(milliseconds: 500) );                  // -> Se agrego
+
+    try {                                                                       // -> Se agrego
+      final user = await authRepository.register(email, password, fullName);    // -> Se agrego
+      _setLoggedUser(user);                                                     // -> Se agrego
+    } on CustomError catch (e) {                                                // -> Se agrego
+      logout(e.message);                                                        // -> Se agrego
+    } catch (e) {                                                               // -> Se agrego
+      logout('Error no controlado');                                            // -> Se agrego
+    }                                                                           // -> Se agrego
+  }
+
+  void checkauthStatus() async {
+    
+  }
+
+  Future<void> logout([String? errorMessage]) async {
+    // TODO: limpiar token
+    state = state.copyWith(
+      authStatus: AuthStatus.notAuthenticated,
+      user: null,
+      errorMessage: errorMessage
+    );
+  }
+
+  void _setLoggedUser( User user ) {
+    // TODO: necesito guardar el token fisicamente
+    state = state.copyWith(
+      user: user,
+      authStatus: AuthStatus.authenticated,
+    );
+  }
+  
+}
+
+enum AuthStatus {  checking, authenticated, notAuthenticated }
+
+class AuthState {
+
+  final AuthStatus authStatus;
+  final User? user;
+  final String errorMessage;
+
+  AuthState({
+    this.authStatus = AuthStatus.checking, 
+    this.user, 
+    this.errorMessage = ''
+  });
+
+  AuthState copyWith({
+    AuthStatus? authStatus,
+    User? user,
+    String? errorMessage
+  }) => AuthState(
+    authStatus: authStatus ?? this.authStatus,
+    user: user ?? this.user,
+    errorMessage: errorMessage ?? this.errorMessage,
+  );
+}
+```
+
+- Abrimos el archivo `auth_datasource_impl.dart`, para realizar la implementación del register llamando al api
+
+```dart
+
+import 'package:basic_auth/config/config.dart';
+import 'package:basic_auth/features/auth/infrastructure/infrastructure.dart';
+import 'package:dio/dio.dart';
+import 'package:basic_auth/features/auth/domain/domain.dart';
+
+class AuthDatasourceImpl extends AuthDatasource {
+
+  final dio = Dio(
+    BaseOptions(
+      baseUrl: Environment.apiUrl,
+    )
+  );
+
+
+  @override
+  Future<User> checkAuthStatus(String token) {
+    // TODO: implement checkAuthStatus
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<User> login(String email, String password) async {
+
+    try {
+      final response = await dio.post('/auth/login', data: {
+        'email': email,
+        'password': password
+      });
+
+      final user = UserMapper.userJsonToEntity(response.data);
+
+      return user;
+
+    } on DioError catch (e) {
+      if ( e.response?.statusCode == 401 ) {
+        throw CustomError(e.response?.data['message'] ?? 'Credenciales incorrectas' );
+      }
+      if ( e.type == DioErrorType.connectionTimeout ) {
+        throw CustomError( 'Revisar conexión a internet' );
+      }
+      throw Exception();
+    
+    } catch (e) {
+      throw Exception();
+    }
+  }
+
+  @override
+  Future<User> register(String email, String password, String fullName) async {       // -> Se agrego
+    try {                                                                             // -> Se agrego
+      final response = await dio.post('/auth/register', data: {                       // -> Se agrego
+        'email': email,                                                               // -> Se agrego
+        'password': password,                                                         // -> Se agrego
+        'fullName': fullName,                                                         // -> Se agrego
+      });                                                                             // -> Se agrego
+
+      final user = UserMapper.userJsonToEntity(response.data);                        // -> Se agrego
+
+      return user;                                                                    // -> Se agrego
+
+    } on DioError catch (e) {                                                         // -> Se agrego
+      if ( e.response?.statusCode == 400 ) {                                          // -> Se agrego
+        throw CustomError(e.response?.data['message'] ?? 'Bad request');              // -> Se agrego
+      }                                                                               // -> Se agrego
+      if ( e.type == DioErrorType.connectionTimeout ) {                               // -> Se agrego
+        throw CustomError( 'Revisar conexión a internet' );                           // -> Se agrego
+      }                                                                               // -> Se agrego
+      throw Exception();                                                              // -> Se agrego
+    } catch (e) {                                                                     // -> Se agrego
+      throw Exception();                                                              // -> Se agrego
+    }                                                                                 // -> Se agrego
+  }                                                                                   // -> Se agrego
+
+}
+```
+
+
+- Abrimos el archivo `register_form_provider.dart`
+
+
+```dart
+
+
+import 'package:basic_auth/features/auth/presentation/providers/auth_provider.dart';
+import 'package:basic_auth/features/shared/shared.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:formz/formz.dart';
+
+//! 3 - StateNotifierProvider - consume afuera
+final registerFormProvider = StateNotifierProvider.autoDispose<RegisterFormNotifier, RegisterFormState>((ref) {
+  
+  //* Tener la referencia al metodo del register
+  final registerCallback = ref.watch(authProvider.notifier).registerUser;     // -> Se agrego
+
+
+  return RegisterFormNotifier(
+    registerCallback: registerCallback                                        // -> Se agrego              
+  );
+});
+
+//! 2 - Como implementar el notifier
+class RegisterFormNotifier extends StateNotifier<RegisterFormState> {
+
+  final Function(String, String, String) registerCallback;                    // -> Se agrego
+
+  RegisterFormNotifier({
+    required this.registerCallback                                            // -> Se agrego
+  }): super( RegisterFormState() );
+
+  //* Metodos
+  onEmailChange( String value ) {
+    final newEmail = Email.dirty(value);
+    state = state.copyWith(
+      email: newEmail,
+      isValid: Formz.validate([ newEmail, state.password, state.username, state.confirmedPassword ])
+    );
+  }
+
+  onPasswordChange( String value ) {
+    final newPassword = Password.dirty(value);
+    state = state.copyWith(
+      password: newPassword,
+      isValid: Formz.validate([ newPassword, state.email, state.username, state.confirmedPassword ])
+    );
+  }
+
+  onConfirmedPasswordChange( String value ) {
+    final newConfirmedPassword = ConfirmedPassword.dirty(original: state.password, value: value);
+    state = state.copyWith(
+      confirmedPassword: newConfirmedPassword,
+      isValid: Formz.validate([ newConfirmedPassword, state.email, state.username, state.password ])
+    );
+  }
+
+  onUsernameChange( String value) {
+    final newUsername = Username.dirty(value);
+    state = state.copyWith(
+      username: newUsername,
+      isValid: Formz.validate([ newUsername, state.email, state.password, state.confirmedPassword ])
+    );
+  }
+
+  onFormSubmit() async {
+    _touchEveryField();
+
+    if ( !state.isValid ) return;
+
+    await registerCallback( state.email.value, state.password.value, state.username.value );  // -> Se agrego
+    
+
+  }
+
+  _touchEveryField() {
+    final email    = Email.dirty(state.email.value);
+    final password1 = Password.dirty(state.password.value);
+    final password2 = ConfirmedPassword.dirty(original: password1, value: state.confirmedPassword.value);
+    final username = Username.dirty(state.username.value);
+    
+    state = state.copyWith(
+      isFromPosted: true,
+      email: email,
+      password: password1,
+      confirmedPassword: password2,
+      username: username,
+      isValid: Formz.validate([ email, password1, password2, username ])
+    );
+
+  }
+  
+}
+
+//! 1 - State del provider
+class RegisterFormState {
+
+  final bool isPosting;
+  final bool isFromPosted;
+  final bool isValid;
+  final Email email;
+  final Password password;
+  final ConfirmedPassword confirmedPassword;
+  final Username username;
+
+  RegisterFormState({
+    this.isPosting = false, 
+    this.isFromPosted = false, 
+    this.isValid = false, 
+    this.email = const Email.pure(), 
+    this.password = const Password.pure(), 
+    this.confirmedPassword = const ConfirmedPassword.pure(), 
+    this.username = const Username.pure()
+  });
+
+  RegisterFormState copyWith({
+    bool? isPosting,
+    bool? isFromPosted,
+    bool? isValid,
+    Email? email,
+    Password? password,
+    ConfirmedPassword? confirmedPassword,
+    Username? username,
+  }) => RegisterFormState(
+      isPosting: isPosting ?? this.isPosting,
+      isFromPosted: isFromPosted ?? this.isFromPosted,
+      isValid: isValid ?? this.isValid,
+      email: email ?? this.email,
+      password: password ?? this.password,
+      confirmedPassword:  confirmedPassword ?? this.confirmedPassword,
+      username: username ?? this.username,  
+    );
+
+  // * Para hacer una impresion del estado
+  @override
+  String toString() {
+    return '''
+      RegisterFormState:
+        isPosting: $isPosting
+        isFromPosted: $isFromPosted
+        isValid: $isValid
+        email: $email
+        password: $password
+        confirmedPassword: $confirmedPassword
+        username: $username
+    ''';
+  }
+
+} 
+
+```
+
+- Abrir el archivo `register_screen.dart`
+
+```dart
+
+import 'package:basic_auth/features/auth/providers/providers.dart';
+import 'package:basic_auth/features/shared/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+class RegisterScreen extends StatelessWidget {
+  const RegisterScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+
+    final size = MediaQuery.of(context).size;
+    final scaffoldBackgroundColor = Theme.of(context).scaffoldBackgroundColor;
+    final textStyles = Theme.of(context).textTheme;
+
+    return SafeArea(
+      child: GestureDetector(
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: Scaffold(
+          body: GeometricalBackground(
+            child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const SizedBox( height: 30 ),
+            
+                  //* Icon Banner
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Container(
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.only(bottomRight: Radius.circular(10), topRight: Radius.circular(10)),
+                        ),
+                        child:  IconButton(
+                          onPressed: () {
+                            if ( !context.canPop() ) return;
+                            context.pop();
+                          }, 
+                          icon: const Icon( Icons.arrow_back_rounded, size: 25, color: Colors.black,),
+                        ),
+                      ),
+                      const Spacer(flex: 1),
+                      Text('Crear cuenta', style: textStyles.titleMedium?.copyWith(color: Colors.white)),
+                      const Spacer(flex: 2),
+                    ],
+                  ),
+            
+                  const SizedBox( height: 80),
+            
+                  Container(
+                    height: size.height + 20,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: scaffoldBackgroundColor,
+                      // color: Colors.red,
+                      borderRadius: const BorderRadius.only(topLeft: Radius.circular(100)),
+                    ),
+                    child: const _RegisterForm(),
+                  )
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RegisterForm extends ConsumerWidget {
+
+  const _RegisterForm();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+     //* Tener acceso al state del registerFromProvider
+    final registerForm = ref.watch(registerFormProvider);               // -> Se agrego
+
+    final textStyles = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 50),
+      child: Column(
+        children: [
+
+          const SizedBox( height: 50 ),
+          Text('Nueva cuenta', style: textStyles.titleMedium),
+          const SizedBox( height: 50 ),
+
+          CustomTextFormField(
+            label: 'Nombre completo',
+            onChanged: ref.read(registerFormProvider.notifier).onUsernameChange,
+            errorMessage: registerForm.isFromPosted
+              ? registerForm.username.errorMessage
+              : null,
+          ),
+          const SizedBox(height: 30),
+
+          CustomTextFormField(
+            label: 'Correo',
+            keyboardType: TextInputType.emailAddress,
+            onChanged: ref.read(registerFormProvider.notifier).onEmailChange,
+            errorMessage: registerForm.isFromPosted
+              ? registerForm.email.errorMessage
+              : null,
+          ),
+          const SizedBox(height: 30),
+
+          CustomTextFormField(
+            label: 'Password',
+            obscureText: true,
+            onChanged: ref.read(registerFormProvider.notifier).onPasswordChange,
+            errorMessage: registerForm.isFromPosted
+              ? registerForm.password.errorMessage
+              : null,
+
+          ),
+          const SizedBox(height: 30),
+
+          CustomTextFormField(
+            label: 'Repita el password',
+            obscureText: true,
+            onChanged: ref.read(registerFormProvider.notifier).onConfirmedPasswordChange,
+            errorMessage: registerForm.isFromPosted
+              ? registerForm.confirmedPassword.errorMessage
+              : null,
+          ),
+
+          const SizedBox(height: 50),
+
+          SizedBox(
+            width: double.infinity,
+            height: 60,
+            child: CustomFilledButton(
+              text: 'Crear',
+              buttonColor: Colors.black,
+               onPressed: () {
+                ref.read(registerFormProvider.notifier).onFormSubmit();             // -> Se agrego
+              },
+            ),
+          ),
+
+          const Spacer(flex: 2),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('¿Ya tienes cuenta?'),
+              TextButton(
+                onPressed: () {
+                  if ( context.canPop() ) {
+                    return context.pop();
+                  }
+                  context.go('/login');
+                }, 
+                child: const Text('Ingresa aquí')
+              )
+            ],
+          ),
+
+          const Spacer(flex: 2),
+
+        ],
+      ),
+    );
+  }
+}
+```
