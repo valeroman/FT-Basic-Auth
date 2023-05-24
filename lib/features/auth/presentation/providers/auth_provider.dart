@@ -1,22 +1,32 @@
 
 import 'package:basic_auth/features/auth/domain/domain.dart';
 import 'package:basic_auth/features/auth/infrastructure/infrastructure.dart';
+import 'package:basic_auth/features/shared/infrastructure/services/key_value_storage_service.dart';
+import 'package:basic_auth/features/shared/infrastructure/services/key_value_storage_service_impl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
 
   final authRepository = AuthRepositoryImpl();
+  final keyValueStorageService = KeyValueStorageServiceImpl();
 
-  return AuthNotifier(authRepository: authRepository);
+  return AuthNotifier(
+    authRepository: authRepository,
+    keyValueStorageService: keyValueStorageService
+  );
 });
 
 class AuthNotifier extends StateNotifier<AuthState> {
 
   final AuthRepository authRepository;
+  final KeyValueStorageService keyValueStorageService;
 
   AuthNotifier({
-    required this.authRepository
-  }): super( AuthState() );
+    required this.authRepository,
+    required this.keyValueStorageService
+  }): super( AuthState() ) {
+    checkauthStatus();
+  }
 
   Future<void> loginUser( String email, String password  ) async {
 
@@ -49,10 +59,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   void checkauthStatus() async {
     
+    final token = await keyValueStorageService.getValue<String>('token');
+
+    if ( token == null ) return logout();
+
+    try {
+      final user = await authRepository.checkAuthStatus(token);
+      _setLoggedUser(user);
+
+    } catch (e) {
+      logout();
+    }
+
   }
 
   Future<void> logout([String? errorMessage]) async {
-    // TODO: limpiar token
+    await keyValueStorageService.removeKey('token');
+
     state = state.copyWith(
       authStatus: AuthStatus.notAuthenticated,
       user: null,
@@ -60,11 +83,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
     );
   }
 
-  void _setLoggedUser( User user ) {
-    // TODO: necesito guardar el token fisicamente
+  void _setLoggedUser( User user ) async {
+    await keyValueStorageService.setKeyValue('token', user.token);
+
     state = state.copyWith(
       user: user,
       authStatus: AuthStatus.authenticated,
+      errorMessage: '',
     );
   }
   

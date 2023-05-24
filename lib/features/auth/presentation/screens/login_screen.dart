@@ -1,4 +1,6 @@
 
+import 'dart:ffi';
+
 import 'package:basic_auth/features/auth/presentation/providers/auth_provider.dart';
 import 'package:basic_auth/features/auth/providers/providers.dart';
 import 'package:basic_auth/features/shared/widgets/widgets.dart';
@@ -118,9 +120,9 @@ class _LoginForm extends ConsumerWidget {
             child: CustomFilledButton(
               text: 'Ingresar',
               buttonColor: Colors.black,
-              onPressed: () {
-                ref.read(loginFormProvider.notifier).onFormSubmit();
-              },
+              onPressed: loginForm.isPosting
+                ? null
+                : ref.read(loginFormProvider.notifier).onFormSubmit
             ),
           ),
 

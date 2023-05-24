@@ -1,29 +1,71 @@
 
 
-import 'package:basic_auth/features/auth/presentation/screens/login_screen.dart';
-import 'package:basic_auth/features/auth/presentation/screens/register_screen.dart';
+import 'package:basic_auth/config/router/app_router_notifier.dart';
+import 'package:basic_auth/features/auth/presentation/providers/auth_provider.dart';
+import 'package:basic_auth/features/auth/presentation/screens/screens.dart';
 import 'package:basic_auth/features/products/presentation/screens/products_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-final appRouter = GoRouter(
-  initialLocation: '/login',
-  routes: [
 
-    //* Auth Routes
-    GoRoute(
-      path: '/login',
-      builder: (context, state) => const LoginScreen(),
-    ),
+//* Provider sencillo por que no va a cambiar el GoRouter
+final goRouterProvider = Provider((ref) {
 
-    GoRoute(
-      path: '/register',
-      builder: (context, state) => const RegisterScreen(),
-    ),
+  final goRouterNotifier = ref.read(goRouterNotifierProvider);
 
-    //* Product Routes
-    GoRoute(
-      path: '/',
-      builder: (context, state) => const ProductsScreen(),
-    ),
-  ]
-);
+  return GoRouter(
+    initialLocation: '/splash',
+    refreshListenable: goRouterNotifier,
+    routes: [
+
+      //* Primera pantalla
+      GoRoute(
+        path: '/splash',
+        builder: (context, state) => const CheckAuthStatusScreen(),
+      ), 
+
+      //* Auth Routes
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => const LoginScreen(),
+      ),
+
+      GoRoute(
+        path: '/register',
+        builder: (context, state) => const RegisterScreen(),
+      ),
+
+      //* Product Routes
+      GoRoute(
+        path: '/',
+        builder: (context, state) => const ProductsScreen(),
+      ),
+    ],
+
+    redirect: (context, state) {
+      
+      // state.subloc ahora es state.matchedLocation
+      // state.params ahora es state.pathParameters
+
+      final isGoingTo = state.matchedLocation;
+      final authStatus = goRouterNotifier.authStatus;
+
+      if ( isGoingTo == '/splash' && authStatus == AuthStatus.checking ) return null;
+
+      if ( authStatus == AuthStatus.notAuthenticated ) {
+        if ( isGoingTo == '/login' || isGoingTo == '/register' ) return null;
+
+        return '/login';
+      }
+
+      if ( authStatus == AuthStatus.authenticated ) {
+        if ( isGoingTo == '/login' || isGoingTo == '/register' || isGoingTo == '/splash' ) {
+          return '/';
+        } 
+      }
+
+      return null;
+    }
+
+  );
+});

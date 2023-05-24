@@ -2287,3 +2287,1126 @@ class _RegisterForm extends ConsumerWidget {
   }
 }
 ```
+
+
+
+### Go Router - Protección de Rutas
+
+#### Preferencias de usuario - Shared Preferences
+
+- Instalamos el paquete de `shared_preferences` que nos permite grabar data en el dispositivo
+```
+flutter pub add shared_preferences
+```
+Documentación: https://pub.dev/packages/shared_preferences
+
+
+- Creamos una carpeta nueva llamada `services` dentro de `lib -> features -> shared -> infrastructure`
+
+- Agregamos un nuevo archivo llamado `key_value_storage_service.dart`
+
+- Agregamos el siguiente código:
+
+```dart
+abstract class KeyValueStorageService {
+
+  Future<void> setKeyValue(String key, value);
+  Future getValue(String key);
+  Future removeKey(String key);
+} 
+```
+
+#### Implementar el patrón adaptador
+
+- Modificamos el archvio `key_value_storage_service.dart` agregando tipo de datos genericos
+
+```dart
+abstract class KeyValueStorageService {
+
+  Future<void> setKeyValue<T>(String key, T value);
+  Future<T?> getValue<T>(String key);
+  Future<bool> removeKey(String key);
+} 
+```
+
+- Creamos el archivo `key_value_storage_service_impl.dart`, para realizar la implementación
+
+```dart
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'key_value_storage_service.dart';
+
+class KeyValueStorageServiceImpl extends KeyValueStorageService {
+
+  Future<SharedPreferences> getSharedPrefs() async {
+    return await SharedPreferences.getInstance();
+  }
+
+  @override
+  Future<T?> getValue<T>(String key) async {
+   final prefs = await getSharedPrefs();
+
+    switch (T) {
+      case int:
+        return prefs.getInt( key) as T?;
+      
+      case String:
+        return prefs.getString(key) as T?;
+
+      default:
+        throw UnimplementedError('Get not implemented for type ${ T.runtimeType }');
+    }
+  }
+
+  @override
+  Future<bool> removeKey(String key) async {
+    final prefs = await getSharedPrefs();
+    return await prefs.remove(key);
+  }
+
+  @override
+  Future<void> setKeyValue<T>(String key, T value) async {
+    final prefs = await getSharedPrefs();
+
+    switch (T) {
+      case int:
+        prefs.setInt( key, value as int);
+        break;
+      
+      case String:
+        prefs.setString(key, value as String);
+        break;
+
+      default:
+        throw UnimplementedError('Set not implemented for type ${ T.runtimeType }');
+    }
+
+  }
+
+}
+```
+
+
+#### Guardar Token en el dispositivo
+
+- abrimos el archivo `auth_provider.dar`
+
+
+```dart
+
+import 'package:basic_auth/features/auth/domain/domain.dart';
+import 'package:basic_auth/features/auth/infrastructure/infrastructure.dart';
+import 'package:basic_auth/features/shared/infrastructure/services/key_value_storage_service.dart';
+import 'package:basic_auth/features/shared/infrastructure/services/key_value_storage_service_impl.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
+
+  final authRepository = AuthRepositoryImpl();
+  final keyValueStorageService = KeyValueStorageServiceImpl();    // -> Se agrego
+
+  return AuthNotifier(
+    authRepository: authRepository,
+    keyValueStorageService: keyValueStorageService                // -> Se agrego
+  );
+});
+
+class AuthNotifier extends StateNotifier<AuthState> {
+
+  final AuthRepository authRepository;
+  final KeyValueStorageService keyValueStorageService;            // -> Se agrego
+
+  AuthNotifier({
+    required this.authRepository,
+    required this.keyValueStorageService                          // -> Se agrego
+  }): super( AuthState() );
+
+  Future<void> loginUser( String email, String password  ) async {
+
+    await Future.delayed( const Duration(milliseconds: 500) );
+
+    try {
+      final user = await authRepository.login(email, password);
+      _setLoggedUser(user);
+    } on CustomError catch (e) {
+      logout( e.message );
+    } catch (e) {
+      logout('Error no controlado');
+    }
+
+  }
+
+  void registerUser( String email, String password, String fullName  ) async {
+    
+    await Future.delayed( const Duration(milliseconds: 500) );
+
+    try {
+      final user = await authRepository.register(email, password, fullName);
+      _setLoggedUser(user);
+    } on CustomError catch (e) {
+      logout(e.message);
+    } catch (e) {
+      logout('Error no controlado');
+    }
+  }
+
+  void checkauthStatus() async {
+    
+  }
+
+  Future<void> logout([String? errorMessage]) async {
+    await keyValueStorageService.removeKey('token');                // -> Se agrego
+
+    state = state.copyWith(
+      authStatus: AuthStatus.notAuthenticated,
+      user: null,
+      errorMessage: errorMessage
+    );
+  }
+
+  void _setLoggedUser( User user ) async {
+    await keyValueStorageService.setKeyValue('token', user.token);  // -> Se agrego
+    
+    state = state.copyWith(
+      user: user,
+      authStatus: AuthStatus.authenticated,
+      errorMessage: '',
+    );
+  }
+  
+}
+
+enum AuthStatus {  checking, authenticated, notAuthenticated }
+
+class AuthState {
+
+  final AuthStatus authStatus;
+  final User? user;
+  final String errorMessage;
+
+  AuthState({
+    this.authStatus = AuthStatus.checking, 
+    this.user, 
+    this.errorMessage = ''
+  });
+
+  AuthState copyWith({
+    AuthStatus? authStatus,
+    User? user,
+    String? errorMessage
+  }) => AuthState(
+    authStatus: authStatus ?? this.authStatus,
+    user: user ?? this.user,
+    errorMessage: errorMessage ?? this.errorMessage,
+  );
+}
+```
+
+
+####  Revisar el estado de la autenticación
+
+- Abrimos el archivo `auth_provider.dart`, para usar la función `checkauthStatus`
+
+
+```dart
+import 'package:basic_auth/features/auth/domain/domain.dart';
+import 'package:basic_auth/features/auth/infrastructure/infrastructure.dart';
+import 'package:basic_auth/features/shared/infrastructure/services/key_value_storage_service.dart';
+import 'package:basic_auth/features/shared/infrastructure/services/key_value_storage_service_impl.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
+
+  final authRepository = AuthRepositoryImpl();
+  final keyValueStorageService = KeyValueStorageServiceImpl();
+
+  return AuthNotifier(
+    authRepository: authRepository,
+    keyValueStorageService: keyValueStorageService
+  );
+});
+
+class AuthNotifier extends StateNotifier<AuthState> {
+
+  final AuthRepository authRepository;
+  final KeyValueStorageService keyValueStorageService;
+
+  AuthNotifier({
+    required this.authRepository,
+    required this.keyValueStorageService
+  }): super( AuthState() ) {
+    checkauthStatus();                                                  // -> Se agrego
+  }
+
+  Future<void> loginUser( String email, String password  ) async {
+
+    await Future.delayed( const Duration(milliseconds: 500) );
+
+    try {
+      final user = await authRepository.login(email, password);
+      _setLoggedUser(user);
+    } on CustomError catch (e) {
+      logout( e.message );
+    } catch (e) {
+      logout('Error no controlado');
+    }
+
+  }
+
+  void registerUser( String email, String password, String fullName  ) async {
+    
+    await Future.delayed( const Duration(milliseconds: 500) );
+
+    try {
+      final user = await authRepository.register(email, password, fullName);
+      _setLoggedUser(user);
+    } on CustomError catch (e) {
+      logout(e.message);
+    } catch (e) {
+      logout('Error no controlado');
+    }
+  }
+
+  void checkauthStatus() async {
+    
+    final token = await keyValueStorageService.getValue<String>('token');   // -> Se agrego
+
+    if ( token == null ) return logout();                                   // -> Se agrego
+
+    try {                                                                   // -> Se agrego
+      final user = await authRepository.checkAuthStatus(token);             // -> Se agrego
+      _setLoggedUser(user);                                                 // -> Se agrego
+
+    } catch (e) {                                                           // -> Se agrego
+      logout();                                                             // -> Se agrego
+    }                                                                       // -> Se agrego
+
+  }
+
+  Future<void> logout([String? errorMessage]) async {
+    await keyValueStorageService.removeKey('token');
+
+    state = state.copyWith(
+      authStatus: AuthStatus.notAuthenticated,
+      user: null,
+      errorMessage: errorMessage
+    );
+  }
+
+  void _setLoggedUser( User user ) async {
+    await keyValueStorageService.setKeyValue('token', user.token);
+
+    state = state.copyWith(
+      user: user,
+      authStatus: AuthStatus.authenticated,
+      errorMessage: '',
+    );
+  }
+  
+}
+
+enum AuthStatus {  checking, authenticated, notAuthenticated }
+
+class AuthState {
+
+  final AuthStatus authStatus;
+  final User? user;
+  final String errorMessage;
+
+  AuthState({
+    this.authStatus = AuthStatus.checking, 
+    this.user, 
+    this.errorMessage = ''
+  });
+
+  AuthState copyWith({
+    AuthStatus? authStatus,
+    User? user,
+    String? errorMessage
+  }) => AuthState(
+    authStatus: authStatus ?? this.authStatus,
+    user: user ?? this.user,
+    errorMessage: errorMessage ?? this.errorMessage,
+  );
+}
+```
+
+- Abrimos el archivo `auth_datasource_impl.dart`, para realizar la implementacion del `checkAuthStatus`
+
+
+```dart
+
+import 'package:basic_auth/config/config.dart';
+import 'package:basic_auth/features/auth/infrastructure/infrastructure.dart';
+import 'package:dio/dio.dart';
+import 'package:basic_auth/features/auth/domain/domain.dart';
+
+class AuthDatasourceImpl extends AuthDatasource {
+
+  final dio = Dio(
+    BaseOptions(
+      baseUrl: Environment.apiUrl,
+    )
+  );
+
+
+  @override
+  Future<User> checkAuthStatus(String token) async {
+
+    try {                                                       // -> Se agrego
+      final response = await dio.get('/auth/check-status',      // -> Se agrego
+        options: Options(                                       // -> Se agrego
+          headers: {                                            // -> Se agrego
+            'Authorization': 'Bearer $token'                    // -> Se agrego
+          }
+        ) 
+      );
+
+      final user = UserMapper.userJsonToEntity(response.data);  // -> Se agrego
+      return user;                                              // -> Se agrego
+
+    } on DioError catch (e) {                                   // -> Se agrego
+      if ( e.response?.statusCode == 401 ) {                    // -> Se agrego
+        throw CustomError('Token incorrecto');                  // -> Se agrego
+      }
+      throw Exception();                                        // -> Se agrego
+    
+    } catch (e) {                                               // -> Se agrego
+      throw Exception();                                        // -> Se agrego
+    }
+  }
+
+  @override
+  Future<User> login(String email, String password) async {
+
+    try {
+      final response = await dio.post('/auth/login', data: {
+        'email': email,
+        'password': password
+      });
+
+      final user = UserMapper.userJsonToEntity(response.data);
+
+      return user;
+
+    } on DioError catch (e) {
+      if ( e.response?.statusCode == 401 ) {
+        throw CustomError(e.response?.data['message'] ?? 'Credenciales incorrectas' );
+      }
+      if ( e.type == DioErrorType.connectionTimeout ) {
+        throw CustomError( 'Revisar conexión a internet' );
+      }
+      throw Exception();
+    
+    } catch (e) {
+      throw Exception();
+    }
+  }
+
+  @override
+  Future<User> register(String email, String password, String fullName) async {
+    try {
+      final response = await dio.post('/auth/register', data: {
+        'email': email,
+        'password': password,
+        'fullName': fullName,
+      });
+
+      final user = UserMapper.userJsonToEntity(response.data);
+
+      return user;
+
+    } on DioError catch (e) {
+      if ( e.response?.statusCode == 400 ) {
+        throw CustomError(e.response?.data['message'] ?? 'Bad request');
+      }
+      if ( e.type == DioErrorType.connectionTimeout ) {
+        throw CustomError( 'Revisar conexión a internet' );
+      }
+      throw Exception();
+    } catch (e) {
+      throw Exception();
+    }
+  }
+
+}
+```
+
+
+#### Check Auth Status Screen
+
+- Creamos el nuevo screen `check_auth_status_screen.dart` y agregamos el siguiente código:
+
+```dart
+import 'package:flutter/material.dart';
+
+class CheckAuthStatusScreen extends StatelessWidget {
+  const CheckAuthStatusScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    
+    return const Scaffold(
+      body: Center(
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+    );
+  }
+}
+```
+
+- Agregamos la nueva ruta en el `app_router.dart`
+
+```dart
+
+
+import 'package:basic_auth/features/auth/presentation/screens/login_screen.dart';
+import 'package:basic_auth/features/auth/presentation/screens/register_screen.dart';
+import 'package:basic_auth/features/auth/presentation/screens/screens.dart';
+import 'package:basic_auth/features/products/presentation/screens/products_screen.dart';
+import 'package:go_router/go_router.dart';
+
+final appRouter = GoRouter(
+  initialLocation: '/splash',                                       // -> Se agrego el splash
+  routes: [
+
+    //* Primera pantalla
+    GoRoute(                                                        // -> Se agrego el splash
+      path: '/splash',                                              // -> Se agrego el splash
+      builder: (context, state) => const CheckAuthStatusScreen(),   // -> Se agrego el splash
+    ), 
+
+    //* Auth Routes
+    GoRoute(
+      path: '/login',
+      builder: (context, state) => const LoginScreen(),
+    ),
+
+    GoRoute(
+      path: '/register',
+      builder: (context, state) => const RegisterScreen(),
+    ),
+
+    //* Product Routes
+    GoRoute(
+      path: '/',
+      builder: (context, state) => const ProductsScreen(),
+    ),
+  ]
+);
+```
+
+- Abrir el archivo `side_menu.dart`, donde esta el boton de cerrar session y cambiamos de `StatefulWidget` a un `ConsumerStatefulWidget`
+
+```dart
+
+
+import 'package:basic_auth/features/auth/presentation/providers/auth_provider.dart';
+import 'package:basic_auth/features/shared/shared.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class SideMenu extends ConsumerStatefulWidget {                     // -> Se cambio a ConsumerStatefulWidget
+
+  final GlobalKey<ScaffoldState> scaffoldKey;
+
+  const SideMenu({
+    super.key, 
+    required this.scaffoldKey
+  });
+
+  @override
+  SideMenuState createState() => SideMenuState();                 // -> Se cambio
+}
+
+class SideMenuState extends ConsumerState<SideMenu> {             // -> Se cambio
+
+  int navDrawerIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+
+    final hasNotch = MediaQuery.of(context).viewPadding.top > 35;
+    final textStyles = Theme.of(context).textTheme;
+    
+    return NavigationDrawer(
+      elevation: 1,
+      selectedIndex: navDrawerIndex,
+      onDestinationSelected: (value) {
+
+        setState(() {
+          navDrawerIndex = value;
+        });
+
+        // final menuItem = appMenuItems[value];
+        // context.push( menuItem.link );
+        widget.scaffoldKey.currentState?.closeDrawer();
+      },
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(20, hasNotch ? 0 : 20, 16, 0),
+          child: Text('Saludos', style: textStyles.titleMedium),
+        ),
+
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 16, 10),
+          child: Text('Tony Stark', style: textStyles.titleSmall),
+        ),
+
+        const NavigationDrawerDestination(
+          icon: Icon( Icons.home_outlined), 
+          label: Text('Productos')
+        ),
+
+        const Padding(
+          padding: EdgeInsets.fromLTRB(28, 16, 28, 10),
+          child: Divider(),
+        ),
+
+        const Padding(
+          padding: EdgeInsets.fromLTRB(28, 10, 16, 10),
+          child: Text('Otras opciones'),
+        ),
+
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: CustomFilledButton(
+            onPressed: () {
+              ref.read(authProvider.notifier).logout();               // -> Se agrego
+            },
+            text: 'Cerrar sesión',
+          ),
+        )
+      ],
+    );
+  }
+}
+```
+
+
+#### Go_Router - Protección de Rutas
+
+- Abrimos el archivo `app_router.dart` y  creamos un provider que no va a modificar el goRouter
+
+```dart
+
+import 'package:basic_auth/features/auth/presentation/screens/screens.dart';
+import 'package:basic_auth/features/products/presentation/screens/products_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+
+//* Provider sencillo por que no va a cambiar el GoRouter
+final goRouterProvider = Provider((ref) {
+
+  return GoRouter(
+    initialLocation: '/splash',
+    routes: [
+
+      //* Primera pantalla
+      GoRoute(
+        path: '/splash',
+        builder: (context, state) => const CheckAuthStatusScreen(),
+      ), 
+
+      //* Auth Routes
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => const LoginScreen(),
+      ),
+
+      GoRoute(
+        path: '/register',
+        builder: (context, state) => const RegisterScreen(),
+      ),
+
+      //* Product Routes
+      GoRoute(
+        path: '/',
+        builder: (context, state) => const ProductsScreen(),
+      ),
+    ]
+  );
+});
+```
+
+- Abrimos el archivo `main.dart` y realizamos la siguientes modificaciones, cambiamos de `StatelessWidget` a `ConsumerWidget`
+
+```dart
+import 'package:basic_auth/config/config.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+void main() async {
+
+  await Environment.initEnvironment();
+
+  runApp(
+    const ProviderScope(child: MainApp())
+  );
+}
+
+class MainApp extends ConsumerWidget {                      // -> Se modifico por un ConsumerWidget
+  const MainApp({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {       // -> Se agrego WidgetRef
+
+    //* Como estoy dentro de un build uso el watch
+    final appRouter = ref.watch(goRouterProvider);          // -> Se agrego
+
+    return MaterialApp.router(
+      routerConfig: appRouter,
+      theme: AppTheme().getTheme(),
+      debugShowCheckedModeBanner: false,
+    );
+  }
+}
+```
+
+
+#### GoRouterNotifier
+
+- Implementamos un ChangeNotifier, creamos un nuevo archivo llamado `app_router_notifier.dart`
+
+```dart
+import 'package:basic_auth/features/auth/presentation/providers/auth_provider.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+final goRouterNotifierProvider = Provider((ref) {
+  final authNotifier = ref.read(authProvider.notifier);
+  return GoRouterNotifier(authNotifier);
+});
+
+class GoRouterNotifier extends ChangeNotifier {
+
+  final AuthNotifier _authNotifier;
+
+  AuthStatus _authStatus = AuthStatus.checking;
+
+  GoRouterNotifier(this._authNotifier) {
+    _authNotifier.addListener((state) {
+      authStatus = state.authStatus;
+    });
+  }
+  
+  AuthStatus get authStatus => _authStatus;
+
+  set authStatus(AuthStatus value) {
+    _authStatus = value;
+    notifyListeners();
+  }
+}
+```
+
+- Abrimos el archivo `app_router.dart` 
+
+```dart
+
+
+import 'package:basic_auth/config/router/app_router_notifier.dart';
+import 'package:basic_auth/features/auth/presentation/screens/screens.dart';
+import 'package:basic_auth/features/products/presentation/screens/products_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+
+//* Provider sencillo por que no va a cambiar el GoRouter
+final goRouterProvider = Provider((ref) {
+
+  final goRouterNotifier = ref.read(goRouterNotifierProvider);        // -> Se agrego
+
+  return GoRouter(
+    initialLocation: '/splash',
+    refreshListenable: goRouterNotifier,                              // -> Se agrego
+    routes: [
+
+      //* Primera pantalla
+      GoRoute(
+        path: '/splash',
+        builder: (context, state) => const CheckAuthStatusScreen(),
+      ), 
+
+      //* Auth Routes
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => const LoginScreen(),
+      ),
+
+      GoRoute(
+        path: '/register',
+        builder: (context, state) => const RegisterScreen(),
+      ),
+
+      //* Product Routes
+      GoRoute(
+        path: '/',
+        builder: (context, state) => const ProductsScreen(),
+      ),
+    ],
+
+    redirect: (context, state) {                                      // -> Se agrego
+      
+      return null;                                                    // -> Se agrego
+    }
+
+  );
+});
+```
+
+
+#### Navegar dependiendo de la autenticación
+
+- Abrimos el archivo `app_router.dart` y agregamos el siguiente código
+
+```dart
+
+
+import 'package:basic_auth/config/router/app_router_notifier.dart';
+import 'package:basic_auth/features/auth/presentation/providers/auth_provider.dart';
+import 'package:basic_auth/features/auth/presentation/screens/screens.dart';
+import 'package:basic_auth/features/products/presentation/screens/products_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+
+//* Provider sencillo por que no va a cambiar el GoRouter
+final goRouterProvider = Provider((ref) {
+
+  final goRouterNotifier = ref.read(goRouterNotifierProvider);
+
+  return GoRouter(
+    initialLocation: '/splash',
+    refreshListenable: goRouterNotifier,
+    routes: [
+
+      //* Primera pantalla
+      GoRoute(
+        path: '/splash',
+        builder: (context, state) => const CheckAuthStatusScreen(),
+      ), 
+
+      //* Auth Routes
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => const LoginScreen(),
+      ),
+
+      GoRoute(
+        path: '/register',
+        builder: (context, state) => const RegisterScreen(),
+      ),
+
+      //* Product Routes
+      GoRoute(
+        path: '/',
+        builder: (context, state) => const ProductsScreen(),
+      ),
+    ],
+
+    redirect: (context, state) {
+      
+      // state.subloc ahora es state.matchedLocation
+      // state.params ahora es state.pathParameters
+
+      final isGoingTo = state.matchedLocation;                                          // -> Se agrego
+      final authStatus = goRouterNotifier.authStatus;                                   // -> Se agrego
+
+      if ( isGoingTo == '/splash' && authStatus == AuthStatus.checking ) return null;   // -> Se agrego
+
+      if ( authStatus == AuthStatus.notAuthenticated ) {                                // -> Se agrego
+        if ( isGoingTo == '/login' || isGoingTo == '/register' ) return null;           // -> Se agrego
+
+        return '/login';                                                                // -> Se agrego
+      }
+
+      if ( authStatus == AuthStatus.authenticated ) {                                   // -> Se agrego
+        if ( isGoingTo == '/login' || isGoingTo == '/register' || isGoingTo == '/splash' ) {    // -> Se agrego
+          return '/';                                                                   // -> Se agrego
+        } 
+      }
+
+      return null;                                                                      // -> Se agrego
+    }
+
+  );
+});
+```
+
+
+#### Bloquear botón de login
+
+- abrimos el archivo `login_form_provider.dart`, cambiamos el state de `isPosting`
+
+
+
+```dart
+import 'package:basic_auth/features/auth/presentation/providers/auth_provider.dart';
+import 'package:basic_auth/features/shared/shared.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:formz/formz.dart';
+
+//! 3 - StateNotifierProvider - consume afuera
+final loginFormProvider = StateNotifierProvider.autoDispose<LoginFormNotifier, LoginFormState>((ref) {
+
+  //* Tener la referencia al metodo del loginUser
+  final loginUserCallback = ref.watch(authProvider.notifier).loginUser;
+
+  return LoginFormNotifier(
+    loginUserCallback: loginUserCallback
+  );
+});
+
+//! 2 - Como imlementar un notifier
+class LoginFormNotifier extends StateNotifier<LoginFormState> {
+
+  final Function(String, String) loginUserCallback;
+
+  LoginFormNotifier({
+    required this.loginUserCallback
+  }): super( LoginFormState() );
+
+  //* Methodos
+  onEmailChange( String value) {
+    final newEmail = Email.dirty(value);
+    state = state.copyWith(
+      email: newEmail,
+      isValid: Formz.validate([ newEmail, state.password ])
+    );
+  } 
+
+  onPasswordChange( String value) {
+    final newPassword = Password.dirty(value);
+    state = state.copyWith(
+      password: newPassword,
+      isValid: Formz.validate([ newPassword, state.email ])
+    );
+  } 
+
+  onFormSubmit() async {
+    _touchEveryField();
+
+    if ( !state.isValid ) return;
+
+    state = state.copyWith(isPosting: true);                              // -> Se agrego
+
+    await loginUserCallback( state.email.value, state.password.value );
+
+    state = state.copyWith(isPosting: false);                             // -> Se agrego
+
+  }
+
+  _touchEveryField() {
+    final email    = Email.dirty(state.email.value);
+    final password = Password.dirty(state.password.value);
+
+    state = state.copyWith(
+      isFromPosted: true,
+      email: email,
+      password: password,
+      isValid: Formz.validate([ email, password ])
+    );
+  }
+  
+}
+
+//! 1 - State del provider
+
+class LoginFormState {
+
+  final bool isPosting;
+  final bool isFromPosted;
+  final bool isValid;
+  final Email email;
+  final Password password;
+
+  LoginFormState({
+    this.isPosting = false, 
+    this.isFromPosted = false, 
+    this.isValid = false, 
+    this.email = const Email.pure(), 
+    this.password = const Password.pure()
+  });
+
+  LoginFormState copyWith({
+    bool? isPosting,
+    bool? isFromPosted,
+    bool? isValid,
+    Email? email,
+    Password? password,
+  }) => LoginFormState(
+    isPosting: isPosting ?? this.isPosting,
+    isFromPosted: isFromPosted ?? this.isFromPosted,
+    isValid: isValid ?? this.isValid,
+    email: email ?? this.email,
+    password: password ?? this.password,    
+  );
+
+
+  // * Para hacer una impresion del estado
+  @override
+  String toString() {
+    return '''
+      LoginFormState:
+      isPosting: $isPosting
+      isFromPosted: $isFromPosted 
+      isValid: $isValid 
+      email: $email 
+      password: $password
+    ''';
+  }
+}
+```
+
+- Abrimos el archivo `login_screen.dart`, para de manera condicionada habilitar o deshabilitar el botón de Ingresar
+
+```dart
+import 'dart:ffi';
+
+import 'package:basic_auth/features/auth/presentation/providers/auth_provider.dart';
+import 'package:basic_auth/features/auth/providers/providers.dart';
+import 'package:basic_auth/features/shared/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+class LoginScreen extends StatelessWidget {
+  const LoginScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+
+    final size = MediaQuery.of(context).size;
+    final scaffoldBackgroundColor = Theme.of(context).scaffoldBackgroundColor;
+
+    return SafeArea(
+      child: GestureDetector(
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: Scaffold(
+          body: GeometricalBackground(
+            child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+            
+                  const SizedBox( height: 60 ),
+            
+                  //* Icon Banner
+                  const Icon(
+                    Icons.production_quantity_limits_rounded,
+                    color: Colors.white,
+                    size: 70,
+                  ),
+            
+                  const SizedBox( height: 60 ),
+            
+                  Container(
+                    width: double.infinity,
+                    height: size.height - 260,
+                    decoration: BoxDecoration(
+                      color: scaffoldBackgroundColor,
+                      // color: Colors.lightBlue[200],
+                      borderRadius: const BorderRadius.only(topLeft: Radius.circular(100)),
+                    ),
+                    child: const _LoginForm(),
+                  )
+            
+            
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LoginForm extends ConsumerWidget {
+
+  const _LoginForm();
+
+  void showSnackbar(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message))
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+     //* Tener acceso al state del loginFromProvider
+    final loginForm = ref.watch(loginFormProvider);
+
+    ref.listen(authProvider, (previous, next) { 
+      if ( next.errorMessage.isEmpty ) return;
+      showSnackbar( context, next.errorMessage );
+    });
+
+    final textStyle = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric( horizontal: 50 ),
+      child: Column(
+        children: [
+
+          const SizedBox( height: 40 ),
+          Text('Login', style: textStyle.titleMedium),
+          const SizedBox( height: 50 ),
+
+          CustomTextFormField(
+            label: 'Correo',
+            keyboardType: TextInputType.emailAddress,
+            onChanged: ref.read(loginFormProvider.notifier).onEmailChange,
+            errorMessage: loginForm.isFromPosted
+              ? loginForm.email.errorMessage
+              : null,
+          ),
+          const SizedBox( height: 30 ),
+
+          CustomTextFormField(
+            label: 'Constraseña',
+            obscureText: true,
+            onChanged: ref.read(loginFormProvider.notifier).onPasswordChange,
+            errorMessage: loginForm.isFromPosted  
+              ? loginForm.password.errorMessage
+              : null,
+          ),
+          const SizedBox( height: 30 ),
+
+          SizedBox(
+            width: double.infinity,
+            height: 60,
+            child: CustomFilledButton(
+              text: 'Ingresar',
+              buttonColor: Colors.black,
+              onPressed: loginForm.isPosting                            // -> Se agrego
+                ? null                                                  // -> Se agrego
+                : ref.read(loginFormProvider.notifier).onFormSubmit     // -> Se agrego
+            ),
+          ),
+
+          const Spacer( flex: 2 ),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('¿No tienes cuenta?'),
+              TextButton(
+                onPressed: () => context.push('/register'), 
+                child: const Text('Crea una aquí')
+              )
+            ],
+          ),
+
+          const Spacer( flex: 1 ),
+        ],
+      ),
+    );
+  }
+}
+
+```
