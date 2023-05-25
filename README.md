@@ -3410,3 +3410,1372 @@ class _LoginForm extends ConsumerWidget {
 }
 
 ```
+
+
+### Obtener Productos - Datasources - Repositories
+
+
+#### OnFieldSubmitted
+
+- Vamos agregar una propiedad adicional al `TextFormField` que es el `onFieldSubmitted`, que nos permite disparar un funcion cuando pisamos enter o done
+
+- Abrimos el archivo `custom_text_form_field.dart` y agregamos la nueva propiedad `onFieldSubmitted`
+
+```dart
+import 'package:flutter/material.dart';
+
+class CustomTextFormField extends StatelessWidget {
+
+  final String? label;
+  final String? hint;
+  final String? errorMessage;
+  final bool obscureText;
+  final TextInputType? keyboardType;
+  final Function(String)? onChanged;
+  final String? Function(String?)? validator;
+  final Function(String)? onFieldSubmitted;                   // -> Se agrego
+
+  const CustomTextFormField({
+    super.key, 
+    this.label, 
+    this.hint, 
+    this.errorMessage, 
+    this.obscureText = false, 
+    this.keyboardType = TextInputType.text, 
+    this.onChanged, 
+    this.validator,
+    this.onFieldSubmitted                                     // -> Se agrego
+  });
+
+  @override
+  Widget build(BuildContext context) {
+
+    final colors = Theme.of(context).colorScheme;
+
+    final border = OutlineInputBorder(
+      borderSide: const BorderSide( color: Colors.transparent ),
+      borderRadius: BorderRadius.circular(40)
+    );
+
+    const borderRadius = Radius.circular(15);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.only(
+          topLeft: borderRadius, 
+          bottomLeft: borderRadius,
+          bottomRight: borderRadius,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 5)
+          )
+        ]
+      ),
+      child: TextFormField(
+        onChanged: onChanged,
+        onFieldSubmitted: onFieldSubmitted,             // -> Se agrego
+        validator: validator,
+        obscureText: obscureText,
+        keyboardType: keyboardType,
+        style: const TextStyle( fontSize: 20, color: Colors.black54),
+        decoration: InputDecoration(
+          floatingLabelStyle: const TextStyle( color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18),
+          enabledBorder: border,
+          focusedBorder: border,
+          errorBorder: border.copyWith( borderSide: const BorderSide( color: Colors.transparent )),
+          focusedErrorBorder: border.copyWith( borderSide: const BorderSide( color: Colors.transparent )),
+          isDense: true,
+          label: label != null ? Text(label!) : null,
+          hintText: hint,
+          errorText: errorMessage,
+          focusColor: colors.primary
+        ),
+      ),
+    );
+  }
+}
+```
+
+- Abrimos el archivo `login_screen.dart` y al input del password, agregamos la propiedad `onFieldSubmitted` para que cuando pisemos el botin enter se dispare la funcion del `onFormSubmit`
+
+```dart
+import 'dart:ffi';
+
+import 'package:basic_auth/features/auth/presentation/providers/auth_provider.dart';
+import 'package:basic_auth/features/auth/providers/providers.dart';
+import 'package:basic_auth/features/shared/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+class LoginScreen extends StatelessWidget {
+  const LoginScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+
+    final size = MediaQuery.of(context).size;
+    final scaffoldBackgroundColor = Theme.of(context).scaffoldBackgroundColor;
+
+    return SafeArea(
+      child: GestureDetector(
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: Scaffold(
+          body: GeometricalBackground(
+            child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+            
+                  const SizedBox( height: 60 ),
+            
+                  //* Icon Banner
+                  const Icon(
+                    Icons.production_quantity_limits_rounded,
+                    color: Colors.white,
+                    size: 70,
+                  ),
+            
+                  const SizedBox( height: 60 ),
+            
+                  Container(
+                    width: double.infinity,
+                    height: size.height - 260,
+                    decoration: BoxDecoration(
+                      color: scaffoldBackgroundColor,
+                      // color: Colors.lightBlue[200],
+                      borderRadius: const BorderRadius.only(topLeft: Radius.circular(100)),
+                    ),
+                    child: const _LoginForm(),
+                  )
+            
+            
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LoginForm extends ConsumerWidget {
+
+  const _LoginForm();
+
+  void showSnackbar(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message))
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+     //* Tener acceso al state del loginFromProvider
+    final loginForm = ref.watch(loginFormProvider);
+
+    ref.listen(authProvider, (previous, next) { 
+      if ( next.errorMessage.isEmpty ) return;
+      showSnackbar( context, next.errorMessage );
+    });
+
+    final textStyle = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric( horizontal: 50 ),
+      child: Column(
+        children: [
+
+          const SizedBox( height: 40 ),
+          Text('Login', style: textStyle.titleMedium),
+          const SizedBox( height: 50 ),
+
+          CustomTextFormField(
+            label: 'Correo',
+            keyboardType: TextInputType.emailAddress,
+            onChanged: ref.read(loginFormProvider.notifier).onEmailChange,
+            errorMessage: loginForm.isFromPosted
+              ? loginForm.email.errorMessage
+              : null,
+          ),
+          const SizedBox( height: 30 ),
+
+          CustomTextFormField(
+            label: 'Constraseña',
+            obscureText: true,
+            onChanged: ref.read(loginFormProvider.notifier).onPasswordChange,
+            onFieldSubmitted: (_) => ref.read(loginFormProvider.notifier).onFormSubmit(),     // -> Se agrego
+            errorMessage: loginForm.isFromPosted  
+              ? loginForm.password.errorMessage
+              : null,
+          ),
+          const SizedBox( height: 30 ),
+
+          SizedBox(
+            width: double.infinity,
+            height: 60,
+            child: CustomFilledButton(
+              text: 'Ingresar',
+              buttonColor: Colors.black,
+              onPressed: loginForm.isPosting
+                ? null
+                : ref.read(loginFormProvider.notifier).onFormSubmit
+            ),
+          ),
+
+          const Spacer( flex: 2 ),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('¿No tienes cuenta?'),
+              TextButton(
+                onPressed: () => context.push('/register'), 
+                child: const Text('Crea una aquí')
+              )
+            ],
+          ),
+
+          const Spacer( flex: 1 ),
+        ],
+      ),
+    );
+  }
+}
+
+```
+
+
+#### Entidades, datasources y repositorios
+
+- Creamos las nuevas carpetas `domain` y `infrastructure` dentro de la carpeta `products`
+- En la carpeta `domain`, creo tres directorios `entities`, `datasources` y `repositories`
+- Creamos el archivo `product.dart`, dentro de la carpeta `entities`, definimos como va hacer el producto
+
+```dart
+// Generated by https://quicktype.io
+
+import 'package:basic_auth/features/auth/domain/domain.dart';
+
+class Product {
+  String id;
+  String title;
+  double price;
+  String description;
+  String slug;
+  int stock;
+  List<String> sizes;
+  String gender;
+  List<String> tags;
+  List<String> images;
+  User? user;
+
+  Product({
+    required this.id,
+    required this.title,
+    required this.price,
+    required this.description,
+    required this.slug,
+    required this.stock,
+    required this.sizes,
+    required this.gender,
+    required this.tags,
+    required this.images,
+    required this.user,
+  });
+}
+```
+
+
+- Ahora creamos el archivo `products_datasource.dart`, dentro de la carpeta `datasources`, donde vamos a definir las reglas y no se implementa nada
+
+```dart
+import '../entities/product.dart';
+
+//* Definimos las reglas, nno se implementa nada
+abstract class ProductsDatasource {
+
+  Future<List<Product>> getProductByPage({ int limit = 10, int offset = 0 });
+  Future<Product> getProductById( String id );
+
+  Future<List<Product>> searchProductByTerm( String term );
+
+  Future<Product> createUpdateProduct( Map<String, dynamic> productLike );
+
+}
+```
+
+- Creamos el archivo `products_repository.dart`, es igual al datasource
+
+```dart
+import '../entities/product.dart';
+
+abstract class ProductsRepository {
+
+  Future<List<Product>> getProductByPage({ int limit = 10, int offset = 0 });
+  Future<Product> getProductById( String id );
+
+  Future<List<Product>> searchProductByTerm( String term );
+
+  Future<Product> createUpdateProduct( Map<String, dynamic> productLike );
+
+}
+```
+
+- En la carpeta `infrastructure` creo las capetas `datasources` y `repositories`
+
+- En la carpeta `datasources`, creo el archivo `products_datasource_impl.dart`
+
+```dart
+
+import 'package:basic_auth/features/products/domain/domain.dart';
+
+class ProductsDatasourceImpl extends ProductsDatasource {
+  
+  @override
+  Future<Product> createUpdateProduct(Map<String, dynamic> productLike) {
+    // TODO: implement createUpdateProduct
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<Product> getProductById(String id) {
+    // TODO: implement getProductById
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<Product>> getProductByPage({int limit = 10, int offset = 0}) {
+    // TODO: implement getProductByPage
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<Product>> searchProductByTerm(String term) {
+    // TODO: implement searchProductByTerm
+    throw UnimplementedError();
+  }
+
+}
+```
+
+
+- Hacemos la implementación donde su unico objetivo es utilizar el datasosurce, creando el archivo `products_repository_impl.dart`, dentro de la carpeta `repositories`
+
+```dart
+
+import 'package:basic_auth/features/products/domain/domain.dart';
+
+class ProductsRepositoryImpl extends Productsrepository {
+
+  final ProductDatasource datasource;
+
+  ProductsRepositoryImpl(this.datasource);
+
+  @override
+  Future<Product> createUpdateProduct(Map<String, dynamic> productLike) {
+    return datasource.createUpdateProduct(productLike);
+  }
+
+  @override
+  Future<Product> getProductById(String id) {
+    return datasource.getProductById(id);
+  }
+
+  @override
+  Future<List<Product>> getProductByPage({int limit = 10, int offset = 0}) {
+    return datasource.getProductByPage(limit: limit, offset: offset);
+  }
+
+  @override
+  Future<List<Product>> searchProductByTerm(String term) {
+    return datasource.searchProductByTerm(term);
+  }
+
+}
+```
+
+
+#### Implementación - getProductsByPage
+
+
+- Abrimos el archivo `products_datasource_impl.dart`, donde vamos a satisfacer estos metodos o casos que tenemos que hacer, iniciamos con el metodo `getProductByPage` y configuramos `Dio`
+
+```dart
+
+import 'package:basic_auth/config/constants/environment.dart';
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:dio/dio.dart';
+
+class ProductsDatasourceImpl extends ProductsDatasource {
+
+  //* Configurar despues Dio, por eso se usa late, cuando se utilicen los metodos ya va a estar configurado Dio
+  late final Dio dio;                                       // -> Se agrego
+  final String accessToken;                                 // -> Se agrego
+
+  ProductsDatasourceImpl({                                  // -> Se agrego
+    required this.accessToken                               // -> Se agrego
+  }) : dio = Dio(                                           // -> Se agrego
+    BaseOptions(                                            // -> Se agrego
+      baseUrl:  Environment.apiUrl,                         // -> Se agrego
+      headers: {                                            // -> Se agrego
+        'Authorization': 'Bearer $accessToken'              // -> Se agrego
+      }
+    )
+  );
+  
+  @override
+  Future<Product> createUpdateProduct(Map<String, dynamic> productLike) {
+    // TODO: implement createUpdateProduct
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<Product> getProductById(String id) {
+    // TODO: implement getProductById
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<Product>> getProductByPage({int limit = 10, int offset = 0}) async {
+
+    final response = await dio.get<List>('/api/products?limit=$limit&offset=$offset');    // -> Se agrego
+    final List<Product> products = [];                                                    // -> Se agrego
+    for (final product in response.data ?? []) {                                          // -> Se agrego
+      // products.add(value) // mapper
+    }
+
+    return products;                                                                      // -> Se agrego
+
+  }
+
+  @override
+  Future<List<Product>> searchProductByTerm(String term) {
+    // TODO: implement searchProductByTerm
+    throw UnimplementedError();
+  }
+
+}
+```
+
+
+#### Product Mapper
+
+- Creamos la carpeta `mappers`, dentro de la carpeta `products -> infrastructure`
+- Creamos el archivo `product_mapper.dart`
+
+```dart
+import 'package:basic_auth/config/config.dart';
+import 'package:basic_auth/features/auth/infrastructure/infrastructure.dart';
+import 'package:basic_auth/features/products/domain/domain.dart';
+
+class ProductMapper {
+
+  static jsonToEntity( Map<String, dynamic> json ) => Product(
+    id: json['id'],
+    title: json['title'],
+    price: double.parse( json['price'].toString() ),
+    description: json['description'],
+    slug: json['slug'],
+    stock: json['stock'],
+    sizes: List<String>.from( json['sizes'].map((size) => size) ),
+    gender: json['gender'],
+    tags: List<String>.from( json['tags'].map((tag) => tag) ),
+    images: List<String>.from(
+      json['images'].map(
+         (image) => image.startsWith('http')
+            ? image
+            : '${ Environment.apiUrl }/files/product/$image'
+        
+      )
+    ),
+    user: UserMapper.userJsonToEntity(json['user']),
+  );
+}
+```
+
+- Abrimos el archivo `products_datasource_impl.dart`, para utilizar el `ProductMapper`
+
+```dart
+
+import 'package:dio/dio.dart';
+import 'package:basic_auth/config/config.dart';
+import 'package:basic_auth/features/products/domain/domain.dart';
+import '../mappers/product_mapper.dart';
+
+class ProductsDatasourceImpl extends ProductsDatasource {
+
+  //* Configurar despues Dio, por eso se usa late, cuando se utilicen los metodos ya va a estar configurado Dio
+  late final Dio dio;
+  final String accessToken;
+
+  ProductsDatasourceImpl({
+    required this.accessToken
+  }) : dio = Dio(
+    BaseOptions(
+      baseUrl:  Environment.apiUrl,
+      headers: {
+        'Authorization': 'Bearer $accessToken'
+      }
+    )
+  );
+  
+  @override
+  Future<Product> createUpdateProduct(Map<String, dynamic> productLike) {
+    // TODO: implement createUpdateProduct
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<Product> getProductById(String id) {
+    // TODO: implement getProductById
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<Product>> getProductByPage({int limit = 10, int offset = 0}) async {
+
+    final response = await dio.get<List>('/products?limit=$limit&offset=$offset');
+    final List<Product> products = [];
+    for (final product in response.data ?? []) {
+      products.add( ProductMapper.jsonToEntity(product) );        // -> Se agrego el ProductMapper
+    }
+
+    return products;
+
+  }
+
+  @override
+  Future<List<Product>> searchProductByTerm(String term) {
+    // TODO: implement searchProductByTerm
+    throw UnimplementedError();
+  }
+
+}
+```
+
+
+#### Riverpod - Product Repository Provider
+
+- Creamos la carpeta `providers` dentro de `products -> presentation`
+
+- Creamos el archivo `products_repository_provider.dart`, el cual es Proveedor de Products poder establecer a lo largo de toda la aplicacion la instancia de nuestro ProductsRepositoryImpl
+
+```dart
+import 'package:basic_auth/features/auth/presentation/providers/auth_provider.dart';
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/products/infrastructure/infrastructure.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+//* Proveedor de Products poder establecer a lo largo de toda la aplicacion la instancia 
+//* de nuestro ProductsRepositoryImpl
+
+
+final productsRepositoryProvider = Provider<ProductsRepository>((ref) {
+
+  final accessToken = ref.watch( authProvider ).user?.token ?? '';
+
+  final productsRepository = ProductsRepositoryImpl(
+    ProductsDatasourceImpl(accessToken: accessToken)
+  );
+
+  return productsRepository;
+
+});
+```
+
+
+#### Riverpod - StateNotifierProvider - State
+
+- Creamos un nuevo proveedor para llenar los productos
+- Creamos el archivo `products_provider.dart`, en la carpeta `products -> presentation -> providers`
+
+```dart
+import 'package:basic_auth/features/products/domain/domain.dart';
+
+
+// State Notifier Provider
+
+//* State
+//* Como quiero que luzca el estado del provider
+class ProductsState {
+
+  final bool isLastPage;
+  final int limit;
+  final int offset;
+  final bool isLoading;
+  final List<Product> products;
+
+  ProductsState({
+    this.isLastPage = false,
+    this.limit = 10,
+    this.offset = 0,
+    this.isLoading = false,
+    this.products = const []
+  }); 
+
+  ProductsState copyWith({
+    bool? isLastPage,
+    int? limit,
+    int? offset,
+    bool? isLoading,
+    List<Product>? products,
+  }) => ProductsState(
+    isLastPage: isLastPage ?? this.isLastPage,
+    limit: limit ?? this.limit,
+    offset: offset ?? this.offset,
+    isLoading: isLoading ?? this.isLoading,
+    products: products ?? this.products,
+  );
+
+}
+```
+
+
+#### Riverpod - StateNotifierProvider - Notifier
+
+- Seguimos en el archivo `products_provider.dart`, pero ahora agregamos el notifier
+
+```dart
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+
+//? State Notifier Provider
+
+//* Notifier
+class ProducsNotifier extends StateNotifier<ProductsState>{               // -> Se agrego
+
+  final ProductsRepository productsRepository;                            // -> Se agrego
+
+  ProducsNotifier({                                                       // -> Se agrego
+    required this.productsRepository                                      // -> Se agrego
+  }): super( ProductsState() ) {                                          // -> Se agrego
+    loadNextPage();                                                       // -> Se agrego
+  }
+
+  Future loadNextPage() async {                                           // -> Se agrego
+
+    //* Evitar que se haga muchas peticiones
+    if ( state.isLoading || state.isLastPage ) return;                    // -> Se agrego
+
+    state = state.copyWith( isLoading: true );                            // -> Se agrego
+
+    final products = await productsRepository                             // -> Se agrego
+      .getProductByPage(limit: state.limit, offset: state.offset);        // -> Se agrego
+
+    if ( products.isEmpty ) {                                             // -> Se agrego
+
+      state = state.copyWith(                                             // -> Se agrego
+        isLoading: false,                                                 // -> Se agrego
+        isLastPage: true                                                  // -> Se agrego
+      );
+
+      return;                                                             // -> Se agrego
+    }
+
+    state = state.copyWith(
+      isLastPage: false,
+      isLoading: false,
+      offset: state.offset + 10,
+      products: [...state.products, ...products]
+    );
+
+  }
+
+}
+
+//* State
+//* Como quiero que luzca el estado del provider
+class ProductsState {
+
+  final bool isLastPage;
+  final int limit;
+  final int offset;
+  final bool isLoading;
+  final List<Product> products;
+
+  ProductsState({
+    this.isLastPage = false,
+    this.limit = 10,
+    this.offset = 0,
+    this.isLoading = false,
+    this.products = const []
+  }); 
+
+  ProductsState copyWith({
+    bool? isLastPage,
+    int? limit,
+    int? offset,
+    bool? isLoading,
+    List<Product>? products,
+  }) => ProductsState(
+    isLastPage: isLastPage ?? this.isLastPage,
+    limit: limit ?? this.limit,
+    offset: offset ?? this.offset,
+    isLoading: isLoading ?? this.isLoading,
+    products: products ?? this.products,
+  );
+
+}
+```
+
+
+
+#### Riverpod - StateNotifierProvider - Provider
+
+
+```dart
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'products_repository_provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+
+//? State Notifier Provider
+
+//* Provider
+final productsProvider = StateNotifierProvider<ProducsNotifier, ProductsState>((ref) {    // -> Se agrego
+
+  final productsRepository = ref.watch( productsRepositoryProvider );                     // -> Se agrego
+
+  return ProducsNotifier(productsRepository: productsRepository);                         // -> Se agrego
+});
+
+//* Notifier
+class ProducsNotifier extends StateNotifier<ProductsState>{
+
+  final ProductsRepository productsRepository;
+
+  ProducsNotifier({
+    required this.productsRepository
+  }): super( ProductsState() ) {
+    loadNextPage();
+  }
+
+  Future loadNextPage() async {
+
+    //* Evitar que se haga muchas peticiones
+    if ( state.isLoading || state.isLastPage ) return;
+
+    state = state.copyWith( isLoading: true );
+
+    final products = await productsRepository
+      .getProductByPage(limit: state.limit, offset: state.offset);
+
+    if ( products.isEmpty ) {
+
+      state = state.copyWith(
+        isLoading: false,
+        isLastPage: true
+      );
+
+      return;
+    }
+
+    state = state.copyWith(
+      isLastPage: false,
+      isLoading: false,
+      offset: state.offset + 10,
+      products: [...state.products, ...products]
+    );
+
+  }
+
+}
+
+//* State
+//* Como quiero que luzca el estado del provider
+class ProductsState {
+
+  final bool isLastPage;
+  final int limit;
+  final int offset;
+  final bool isLoading;
+  final List<Product> products;
+
+  ProductsState({
+    this.isLastPage = false,
+    this.limit = 10,
+    this.offset = 0,
+    this.isLoading = false,
+    this.products = const []
+  }); 
+
+  ProductsState copyWith({
+    bool? isLastPage,
+    int? limit,
+    int? offset,
+    bool? isLoading,
+    List<Product>? products,
+  }) => ProductsState(
+    isLastPage: isLastPage ?? this.isLastPage,
+    limit: limit ?? this.limit,
+    offset: offset ?? this.offset,
+    isLoading: isLoading ?? this.isLoading,
+    products: products ?? this.products,
+  );
+
+}
+```
+
+
+#### Pantalla de Productos
+
+- Instalación del paquete `flutter_staggered_grid_view`
+
+```
+flutter pub add flutter_staggered_grid_view
+```
+Documentación: https://pub.dev/packages/flutter_staggered_grid_view
+
+
+- Abrimos el archivo `products_screen.dart` y cambiamos de `_ProductView` de un `StatelessWidget` a un `StatefulWidget`
+
+- Ahora cambiamos de `StatefulWidget` a un `ConsumerStatefulWidget`
+
+
+```dart
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:basic_auth/features/shared/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+
+class ProductsScreen extends StatelessWidget {
+  const ProductsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+
+    final scaffoldKey = GlobalKey<ScaffoldState>();
+
+    return Scaffold(
+      drawer: SideMenu( scaffoldKey: scaffoldKey ),
+      appBar: AppBar(
+        title: const Text('Products'),
+        actions: [
+          IconButton(
+            onPressed: () {}, 
+            icon: const Icon( Icons.search_rounded )
+          )
+        ],
+      ),
+      body: const _ProductView(),
+    );
+  }
+}
+
+class _ProductView extends ConsumerStatefulWidget {                   // -> Se actualizo a un ConsumerStatefulWidget
+  const _ProductView();
+
+  @override
+  _ProductViewState createState() => _ProductViewState();             // -> Se actualizo
+}
+
+class _ProductViewState extends ConsumerState {                       // -> Se actualizo
+
+  final ScrollController scrollController = ScrollController();       // -> Se agrego
+
+  @override                                         
+  void initState() {                                                  // -> Se agrego
+    super.initState();
+    // TODO: InfiniteScroll pending
+    ref.read( productsProvider.notifier).loadNextPage();
+
+  }
+
+  @override
+  void dispose() {                                                    // -> Se agrego
+    scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+
+    final productsState = ref.watch( productsProvider);               // -> Se agrego
+
+    return Padding(                                                   // -> Se actualizo a un padding
+      padding: const EdgeInsets.symmetric(horizontal: 10),            // -> Se agrego
+      child: MasonryGridView.count(                                   // -> Se agrego
+        physics: const BouncingScrollPhysics(),                       // -> Se agrego
+        crossAxisCount: 2,                                            // -> Se agrego
+        mainAxisSpacing: 20,                                          // -> Se agrego
+        crossAxisSpacing: 35,                                         // -> Se agrego
+        itemCount: productsState.products.length,                     // -> Se agrego
+        itemBuilder: (context, index) {                               // -> Se agrego
+          final product = productsState.products[index];              // -> Se agrego
+          return Text( product.title );                               // -> Se agrego
+        },
+      ),
+    );
+  }
+}
+```
+
+
+#### Tarjetas de producto
+
+- Creamos la carpeta `widgets` dentro de la carpeta `features -> products -> pressentation`
+
+- Creamos un  uevo widget llamado  `product_card.dart`
+
+```dart
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:flutter/material.dart';
+
+class ProductCard extends StatelessWidget {
+
+  final Product product;
+
+  const ProductCard({
+    super.key, 
+    required this.product
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _ImageViewer(images: product.images),
+
+        Text(product.title, textAlign: TextAlign.center),
+        const SizedBox(height: 20),
+
+      ],
+    );
+  }
+}
+
+class _ImageViewer extends StatelessWidget {
+
+  final List<String> images;
+
+  const _ImageViewer({required this.images});
+
+  @override
+  Widget build(BuildContext context) {
+
+    if ( images.isEmpty ) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Image.asset('assets/images/no-image.jpg', 
+          fit: BoxFit.cover,
+          height: 250,
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: FadeInImage(
+        fit: BoxFit.cover,
+        height: 250,
+        fadeOutDuration: const Duration(milliseconds: 100),
+        fadeInDuration: const Duration(milliseconds: 200),
+        image: NetworkImage(images.first),
+        placeholder: const AssetImage('assets/loaders/bottle-loader.gif'),
+      ),
+    );
+
+  }
+}
+```
+
+- Abrimos el archivo `products_screen.dart`, para agregar el widget del `product_card.dart`
+
+```dart
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:basic_auth/features/products/presentation/widgets/widgets.dart';
+import 'package:basic_auth/features/shared/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+
+class ProductsScreen extends StatelessWidget {
+  const ProductsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+
+    final scaffoldKey = GlobalKey<ScaffoldState>();
+
+    return Scaffold(
+      drawer: SideMenu( scaffoldKey: scaffoldKey ),
+      appBar: AppBar(
+        title: const Text('Products'),
+        actions: [
+          IconButton(
+            onPressed: () {}, 
+            icon: const Icon( Icons.search_rounded )
+          )
+        ],
+      ),
+      body: const _ProductView(),
+    );
+  }
+}
+
+class _ProductView extends ConsumerStatefulWidget {
+  const _ProductView();
+
+  @override
+  _ProductViewState createState() => _ProductViewState();
+}
+
+class _ProductViewState extends ConsumerState {
+
+  final ScrollController scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    // TODO: InfiniteScroll pending
+    ref.read( productsProvider.notifier).loadNextPage();
+
+  }
+
+  @override
+  void dispose() {
+    scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+
+    final productsState = ref.watch( productsProvider);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: MasonryGridView.count(
+        physics: const BouncingScrollPhysics(),
+        crossAxisCount: 2, 
+        mainAxisSpacing: 20,
+        crossAxisSpacing: 35,
+        itemCount: productsState.products.length,
+        itemBuilder: (context, index) {
+          final product = productsState.products[index];
+          return ProductCard(product: product);             // -> Se agrego el ProductCard
+        },
+      ),
+    );
+  }
+}
+```
+
+
+#### Scroll Infinito de Products
+
+- Abrimos el archivo `products_screen.dart` y vamos a realizar el scroll infinito y realizar la conexion con el controller al scrollController
+
+```dart
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:basic_auth/features/products/presentation/widgets/widgets.dart';
+import 'package:basic_auth/features/shared/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+
+class ProductsScreen extends StatelessWidget {
+  const ProductsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+
+    final scaffoldKey = GlobalKey<ScaffoldState>();
+
+    return Scaffold(
+      drawer: SideMenu( scaffoldKey: scaffoldKey ),
+      appBar: AppBar(
+        title: const Text('Products'),
+        actions: [
+          IconButton(
+            onPressed: () {}, 
+            icon: const Icon( Icons.search_rounded )
+          )
+        ],
+      ),
+      body: const _ProductView(),
+    );
+  }
+}
+
+class _ProductView extends ConsumerStatefulWidget {
+  const _ProductView();
+
+  @override
+  _ProductViewState createState() => _ProductViewState();
+}
+
+class _ProductViewState extends ConsumerState {
+
+  final ScrollController scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+
+    scrollController.addListener(() {                                                                   // -> Se agrego el addListener
+      if ( (scrollController.position.pixels + 400) >= scrollController.position.maxScrollExtent  ) {   // -> se agrego
+        ref.read( productsProvider.notifier).loadNextPage();                                            // -> Se movio
+      }
+    });
+    
+  }
+
+  @override
+  void dispose() {
+    scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+
+    final productsState = ref.watch( productsProvider);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: MasonryGridView.count(
+        controller: scrollController,                                                                 // -> Se hace la conexion del controller
+        physics: const BouncingScrollPhysics(),
+        crossAxisCount: 2, 
+        mainAxisSpacing: 20,
+        crossAxisSpacing: 35,
+        itemCount: productsState.products.length,
+        itemBuilder: (context, index) {
+          final product = productsState.products[index];
+          return ProductCard(product: product);
+        },
+      ),
+    );
+  }
+}
+```
+
+
+#### Pantalla de Producto
+
+- Es mejor volver a realizar la petición para traer la información del producto actualizada
+
+- Creamos el archivo `product_screen.dart` y  cambiamos de `StatelessWidget` a `StatefulWidget`
+
+- Cambiamos de un `StatefulWidget` a un `ConsumerStatefulWidget`
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class ProductScreen extends ConsumerStatefulWidget {
+
+  final String productId;
+
+  const ProductScreen({
+    super.key,
+    required this.productId
+  });
+
+  @override
+  ProductScreenState createState() => ProductScreenState();
+}
+
+class ProductScreenState extends ConsumerState<ProductScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Editar Producto'),
+      ),
+      body: Center(
+        child: Text(widget.productId),
+      ),
+    );
+  }
+}
+```
+
+- Abrimos el archivo de `app_router.dart`, para navegar a la pantalla de `product_screen.dart` y agregamos la nueva ruta
+
+```dart
+
+
+import 'package:basic_auth/config/router/app_router_notifier.dart';
+import 'package:basic_auth/features/auth/presentation/providers/auth_provider.dart';
+import 'package:basic_auth/features/auth/presentation/screens/screens.dart';
+import 'package:basic_auth/features/products/presentation/screens/products_screen.dart';
+import 'package:basic_auth/features/products/presentation/screens/screens.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+
+//* Provider sencillo por que no va a cambiar el GoRouter
+final goRouterProvider = Provider((ref) {
+
+  final goRouterNotifier = ref.read(goRouterNotifierProvider);
+
+  return GoRouter(
+    initialLocation: '/splash',
+    refreshListenable: goRouterNotifier,
+    routes: [
+
+      //* Primera pantalla
+      GoRoute(
+        path: '/splash',
+        builder: (context, state) => const CheckAuthStatusScreen(),
+      ), 
+
+      //* Auth Routes
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => const LoginScreen(),
+      ),
+
+      GoRoute(
+        path: '/register',
+        builder: (context, state) => const RegisterScreen(),
+      ),
+
+      //* Product Routes
+      GoRoute(
+        path: '/',
+        builder: (context, state) => const ProductsScreen(),
+      ),
+
+      GoRoute(                                                        // -> Se Agrego la nueva ruta
+        path: '/product/:id',                                         // -> Se agrego
+        builder: (context, state) {                                   // -> Se agrego
+          final productId = state.pathParameters['id'] ?? 'no-id';    // -> Se agrego
+          return ProductScreen(productId: productId);                 // -> Se agrego
+        },
+          
+      ),
+    ],
+
+    redirect: (context, state) {
+      
+      // state.subloc ahora es state.matchedLocation
+      // state.params ahora es state.pathParameters
+
+      final isGoingTo = state.matchedLocation;
+      final authStatus = goRouterNotifier.authStatus;
+
+      if ( isGoingTo == '/splash' && authStatus == AuthStatus.checking ) return null;
+
+      if ( authStatus == AuthStatus.notAuthenticated ) {
+        if ( isGoingTo == '/login' || isGoingTo == '/register' ) return null;
+
+        return '/login';
+      }
+
+      if ( authStatus == AuthStatus.authenticated ) {
+        if ( isGoingTo == '/login' || isGoingTo == '/register' || isGoingTo == '/splash' ) {
+          return '/';
+        } 
+      }
+
+      return null;
+    }
+
+  );
+});
+```
+
+- Ahora vamos a abrir el archivo `products_screen.dart` y envolvemos en un nuevo widget el `ProductCard` en un `GestureDetector` para poder darle click a la tarjeta del producto u navegar a la otra pantalla
+
+```dart
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:basic_auth/features/products/presentation/widgets/widgets.dart';
+import 'package:basic_auth/features/shared/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:go_router/go_router.dart';
+
+class ProductsScreen extends StatelessWidget {
+  const ProductsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+
+    final scaffoldKey = GlobalKey<ScaffoldState>();
+
+    return Scaffold(
+      drawer: SideMenu( scaffoldKey: scaffoldKey ),
+      appBar: AppBar(
+        title: const Text('Products'),
+        actions: [
+          IconButton(
+            onPressed: () {}, 
+            icon: const Icon( Icons.search_rounded )
+          )
+        ],
+      ),
+      body: const _ProductView(),
+    );
+  }
+}
+
+class _ProductView extends ConsumerStatefulWidget {
+  const _ProductView();
+
+  @override
+  _ProductViewState createState() => _ProductViewState();
+}
+
+class _ProductViewState extends ConsumerState {
+
+  final ScrollController scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+
+    scrollController.addListener(() {
+      if ( (scrollController.position.pixels + 400) >= scrollController.position.maxScrollExtent  ) {
+        ref.read( productsProvider.notifier).loadNextPage();
+      }
+    });
+    
+  }
+
+  @override
+  void dispose() {
+    scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+
+    final productsState = ref.watch( productsProvider);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: MasonryGridView.count(
+        controller: scrollController,
+        physics: const BouncingScrollPhysics(),
+        crossAxisCount: 2, 
+        mainAxisSpacing: 20,
+        crossAxisSpacing: 35,
+        itemCount: productsState.products.length,
+        itemBuilder: (context, index) {
+          final product = productsState.products[index];
+          return GestureDetector(                                     // -> Se envolvio en un nuevo widget
+            onTap: () => context.push('/product/${ product.id }'),    // -> Se agrego
+            child: ProductCard(product: product)                      // -> Se agrego
+          );
+        },
+      ),
+    );
+  }
+}
+```

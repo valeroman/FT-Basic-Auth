@@ -4,6 +4,7 @@ import 'package:basic_auth/config/router/app_router_notifier.dart';
 import 'package:basic_auth/features/auth/presentation/providers/auth_provider.dart';
 import 'package:basic_auth/features/auth/presentation/screens/screens.dart';
 import 'package:basic_auth/features/products/presentation/screens/products_screen.dart';
+import 'package:basic_auth/features/products/presentation/screens/screens.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -39,6 +40,15 @@ final goRouterProvider = Provider((ref) {
       GoRoute(
         path: '/',
         builder: (context, state) => const ProductsScreen(),
+      ),
+
+      GoRoute(
+        path: '/product/:id',
+        builder: (context, state) {
+          final productId = state.pathParameters['id'] ?? 'no-id';
+          return ProductScreen(productId: productId);
+        },
+          
       ),
     ],
 

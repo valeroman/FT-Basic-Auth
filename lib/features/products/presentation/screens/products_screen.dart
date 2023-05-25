@@ -1,5 +1,10 @@
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:basic_auth/features/products/presentation/widgets/widgets.dart';
 import 'package:basic_auth/features/shared/widgets/widgets.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:go_router/go_router.dart';
 
 class ProductsScreen extends StatelessWidget {
   const ProductsScreen({super.key});
@@ -25,11 +30,57 @@ class ProductsScreen extends StatelessWidget {
   }
 }
 
-class _ProductView extends StatelessWidget {
+class _ProductView extends ConsumerStatefulWidget {
   const _ProductView();
 
   @override
+  _ProductViewState createState() => _ProductViewState();
+}
+
+class _ProductViewState extends ConsumerState {
+
+  final ScrollController scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+
+    scrollController.addListener(() {
+      if ( (scrollController.position.pixels + 400) >= scrollController.position.maxScrollExtent  ) {
+        ref.read( productsProvider.notifier).loadNextPage();
+      }
+    });
+    
+  }
+
+  @override
+  void dispose() {
+    scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const Center( child: Text('Hola Planeta'),);
+
+    final productsState = ref.watch( productsProvider);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: MasonryGridView.count(
+        controller: scrollController,
+        physics: const BouncingScrollPhysics(),
+        crossAxisCount: 2, 
+        mainAxisSpacing: 20,
+        crossAxisSpacing: 35,
+        itemCount: productsState.products.length,
+        itemBuilder: (context, index) {
+          final product = productsState.products[index];
+          return GestureDetector(
+            onTap: () => context.push('/product/${ product.id }'), 
+            child: ProductCard(product: product)
+          );
+        },
+      ),
+    );
   }
 }
