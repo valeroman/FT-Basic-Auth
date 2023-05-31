@@ -26,6 +26,13 @@ class ProductsScreen extends StatelessWidget {
         ],
       ),
       body: const _ProductView(),
+      floatingActionButton: FloatingActionButton.extended(
+        label: const Text('Nuevo Producto'),
+        icon: const Icon(Icons.add),
+        onPressed: () {
+          context.push('/product/new');
+        },
+      ),
     );
   }
 }

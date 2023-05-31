@@ -4606,8 +4606,6 @@ class ProductScreenState extends ConsumerState<ProductScreen> {
 - Abrimos el archivo de `app_router.dart`, para navegar a la pantalla de `product_screen.dart` y agregamos la nueva ruta
 
 ```dart
-
-
 import 'package:basic_auth/config/router/app_router_notifier.dart';
 import 'package:basic_auth/features/auth/presentation/providers/auth_provider.dart';
 import 'package:basic_auth/features/auth/presentation/screens/screens.dart';
@@ -4775,6 +4773,4738 @@ class _ProductViewState extends ConsumerState {
           );
         },
       ),
+    );
+  }
+}
+```
+
+
+### Crear y Actualizar Productos
+
+#### product Provider
+
+- Vamos a crear un nuevo Provider para manejar la data que fluye con el producto que quiero buscar.
+
+- Creamos el archivo `product_provider.dart`, en la carpeta `features -> products -> presentation -> providers`
+
+```dart
+
+
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'products_repository_provider.dart';
+
+//* Provider usamos el snipper statenotifierprovider
+//* Vamos a usar el autoDispose.family 
+//* autoDispose -> se utiliza para limpiar cada vez que no se va a utilizar
+//* family -> esperar un valor a la hora de utilizar el autoDispose
+final productProvider = StateNotifierProvider.autoDispose.family<ProductNotifier, ProductState, String>(
+  (ref, productId) {
+
+    final productsRepository = ref.watch(productsRepositoryProvider);
+
+    return ProductNotifier(
+      productsRepository: productsRepository, 
+      productId: productId
+  );
+});
+
+//* Notifier
+class ProductNotifier extends StateNotifier<ProductState> {
+
+  final ProductsRepository productsRepository;
+
+  ProductNotifier({
+    required this.productsRepository,
+    required String productId,
+  }): super(ProductState(id: productId));
+
+  Future<void> loadProduct() async {
+
+  }
+
+}
+
+
+//* State
+class ProductState {
+
+  final String id;
+  final Product? product;
+  final bool isLoading;
+  final bool isSaving;
+
+  ProductState({
+    required this.id, 
+    this.product, 
+    this.isLoading = true, 
+    this.isSaving = false,
+  });
+
+  ProductState copyWith({
+    String? id,
+    Product? product,
+    bool? isLoading,
+    bool? isSaving,
+
+  }) => ProductState(
+    id: id ?? this.id,
+    product: product ?? this.product,
+    isLoading: isLoading ?? this.isLoading,
+    isSaving: isSaving ?? this.isSaving,
+  );
+
+}
+```
+
+
+#### Implementar la carga del producto
+
+- Abrimos el archivo `product_provider.dart`
+
+```dart
+
+
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'products_repository_provider.dart';
+
+//* Provider usamos el snipper statenotifierprovider
+//* Vamos a usar el autoDispose.family 
+//* autoDispose -> se utiliza para limpiar cada vez que no se va a utilizar
+//* family -> esperar un valor a la hora de utilizar el autoDispose
+final productProvider = StateNotifierProvider.autoDispose.family<ProductNotifier, ProductState, String>(
+  (ref, productId) {
+
+    final productsRepository = ref.watch(productsRepositoryProvider);
+
+    return ProductNotifier(
+      productsRepository: productsRepository, 
+      productId: productId
+  );
+});
+
+//* Notifier
+class ProductNotifier extends StateNotifier<ProductState> {
+
+  final ProductsRepository productsRepository;
+
+  ProductNotifier({
+    required this.productsRepository,
+    required String productId,
+  }): super(ProductState(id: productId)) {                                  // -> Se agrego
+    loadProduct();                                                          // -> Se agrego
+  }                                                                         // -> Se agrego
+
+  Future<void> loadProduct() async {
+
+    try {                                                                   // -> Se agrego
+      final product = await productsRepository.getProductById(state.id);    // -> Se agrego
+
+      state = state.copyWith(                                               // -> Se agrego
+        isLoading: false,                                                   // -> Se agrego
+        product: product                                                    // -> Se agrego
+      );                                                                    // -> Se agrego
+
+    } catch (e) {                                                           // -> Se agrego
+      print(e);                                                             // -> Se agrego
+    }
+
+  }
+
+}
+
+
+//* State
+class ProductState {
+
+  final String id;
+  final Product? product;
+  final bool isLoading;
+  final bool isSaving;
+
+  ProductState({
+    required this.id, 
+    this.product, 
+    this.isLoading = true, 
+    this.isSaving = false,
+  });
+
+  ProductState copyWith({
+    String? id,
+    Product? product,
+    bool? isLoading,
+    bool? isSaving,
+
+  }) => ProductState(
+    id: id ?? this.id,
+    product: product ?? this.product,
+    isLoading: isLoading ?? this.isLoading,
+    isSaving: isSaving ?? this.isSaving,
+  );
+
+}
+```
+
+
+- Abrimos el archivo `products_datasource_impl.dart` e implementamos `getProductById`
+
+```dart
+
+import 'package:dio/dio.dart';
+import 'package:basic_auth/config/config.dart';
+import 'package:basic_auth/features/products/domain/domain.dart';
+
+import '../errors/product_errors.dart';
+import '../mappers/product_mapper.dart';
+
+class ProductsDatasourceImpl extends ProductsDatasource {
+
+  //* Configurar despues Dio, por eso se usa late, cuando se utilicen los metodos ya va a estar configurado Dio
+  late final Dio dio;
+  final String accessToken;
+
+  ProductsDatasourceImpl({
+    required this.accessToken
+  }) : dio = Dio(
+    BaseOptions(
+      baseUrl:  Environment.apiUrl,
+      headers: {
+        'Authorization': 'Bearer $accessToken'
+      }
+    )
+  );
+  
+  @override
+  Future<Product> createUpdateProduct(Map<String, dynamic> productLike) {
+    // TODO: implement createUpdateProduct
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<Product> getProductById(String id) async {
+    try {                                                           // -> Se agrego
+
+      final response = await dio.get('/products/$id');              // -> Se agrego
+      final product = ProductMapper.jsonToEntity(response.data);    // -> Se agrego
+      return product;                                               // -> Se agrego
+
+      
+    } on DioError catch (e) {                                       // -> Se agrego
+      
+      if ( e.response?.statusCode == 404 ) throw ProductNotFound(); // -> Se agrego
+      throw Exception();                                            // -> Se agrego
+
+    } catch (e) {                                                   // -> Se agrego
+      throw Exception();                                            // -> Se agrego
+    }
+  }
+
+  @override
+  Future<List<Product>> getProductByPage({int limit = 10, int offset = 0}) async {
+
+    final response = await dio.get<List>('/products?limit=$limit&offset=$offset');
+    final List<Product> products = [];
+    for (final product in response.data ?? []) {
+      products.add( ProductMapper.jsonToEntity(product) );
+    }
+
+    return products;
+
+  }
+
+  @override
+  Future<List<Product>> searchProductByTerm(String term) {
+    // TODO: implement searchProductByTerm
+    throw UnimplementedError();
+  }
+
+}
+```
+
+
+- Se crea el archivo `product_errors.dart`, para manejar la excepcion , en la carpeta `features -> products -> infrastructure` , creamos la carpeta `errors`
+
+```dart
+class ProductNotFound implements Exception {}
+```
+
+
+- Abrimos el archivo `product_screen.dart`
+
+```dart
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class ProductScreen extends ConsumerStatefulWidget {
+
+  final String productId;
+
+  const ProductScreen({
+    super.key,
+    required this.productId
+  });
+
+  @override
+  ProductScreenState createState() => ProductScreenState();
+}
+
+class ProductScreenState extends ConsumerState<ProductScreen> {
+
+  @override
+  void initState() {                                          // -> Se agrego
+    super.initState();                                        // -> Se agrego
+
+    ref.read( productProvider(widget.productId).notifier );   // -> Se agrego
+  }
+
+  @override
+  void dispose() {                                            // -> Se agrego
+    // TODO: implement dispose
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Editar Producto'),
+      ),
+      body: Center(
+        child: Text(widget.productId),
+      ),
+    );
+  }
+}
+```
+
+
+#### Product Screen - Fix
+
+- Vamos a cambiar la pantalla `product_screen.dart`
+
+```dart
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class ProductScreen extends ConsumerWidget {
+  final String productId;
+  const ProductScreen({super.key, required this.productId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productState = ref.watch( productProvider(productId) );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Editar Producto'),
+        actions: [
+          IconButton(
+            onPressed: () {}, 
+            icon: const Icon(Icons.camera_alt_outlined))
+        ],
+      ),
+      body: Center(
+        child: Text(productState.product?.title ?? 'cargando'),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {},
+        child: const Icon(Icons.save_as_outlined),
+      ),
+    );
+  }
+}
+```
+
+
+#### Diseño de la pantalla
+
+- Cramos el archivo `full_screen_loader.dart`, en la carpeta `shared -> widgets`
+
+```dart
+
+import 'package:flutter/material.dart';
+
+class FullScreenLoader extends StatelessWidget {
+  const FullScreenLoader({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox.expand(
+      child: Center(
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+    );
+  }
+}
+```
+
+
+- Creamos el archivo `custom_product_field.dart`
+
+```dart
+import 'package:flutter/material.dart';
+
+
+class CustomProductField extends StatelessWidget {
+
+  final bool isTopField; // La idea es que tenga bordes redondeados arriba
+  final bool isBottomField; // La idea es que tenga bordes redondeados abajo
+  final String? label;
+  final String? hint;
+  final String? errorMessage;
+  final bool obscureText;
+  final TextInputType? keyboardType;
+  final int maxLines;
+  final String initialValue;
+  final Function(String)? onChanged;
+  final Function(String)? onFieldSubmitted;
+  final String? Function(String?)? validator;
+
+  const CustomProductField({
+    super.key, 
+    this.isTopField = false, 
+    this.isBottomField = false, 
+    this.label, 
+    this.hint, 
+    this.errorMessage, 
+    this.obscureText = false,
+    this.keyboardType = TextInputType.text,
+    this.maxLines = 1,
+    this.initialValue = '',
+    this.onChanged, 
+    this.onFieldSubmitted, 
+    this.validator, 
+  });
+
+  @override
+  Widget build(BuildContext context) {
+
+    final colors = Theme.of(context).colorScheme;
+
+    final border = OutlineInputBorder(
+      borderSide: const BorderSide(color: Colors.transparent),
+      borderRadius: BorderRadius.circular(40)
+    );
+
+    const borderRadius = Radius.circular(15);
+
+    return Container(
+      // padding: const EdgeInsets.only(bottom: 0, top: 15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: isTopField ? borderRadius : Radius.zero, 
+          topRight: isTopField ? borderRadius : Radius.zero, 
+          bottomLeft: isBottomField ? borderRadius : Radius.zero,
+          bottomRight: isBottomField ? borderRadius : Radius.zero,
+        ),
+        boxShadow: [
+          if (isBottomField)
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 5,
+              offset: const Offset(0,3)
+            )
+        ]
+      ),
+      child: TextFormField(
+        onChanged: onChanged,
+        onFieldSubmitted: onFieldSubmitted,
+        validator: validator,
+        obscureText: obscureText,
+        keyboardType: keyboardType,
+        style: const TextStyle( fontSize: 15, color: Colors.black54 ),
+        maxLines: maxLines,
+        initialValue: initialValue,
+        decoration: InputDecoration(
+          floatingLabelBehavior: maxLines > 1 ? FloatingLabelBehavior.always : FloatingLabelBehavior.auto,
+          floatingLabelStyle: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15),
+          enabledBorder: border,
+          focusedBorder: border,
+          errorBorder: border.copyWith( borderSide: const BorderSide( color: Colors.transparent )),
+          focusedErrorBorder: border.copyWith( borderSide: const BorderSide( color: Colors.transparent )),
+          isDense: true,
+          label: label != null ? Text(label!) : null,
+          hintText: hint,
+          errorText: errorMessage,
+          focusColor: colors.primary,
+          // icon: Icon( Icons.supervised_user_circle_outlined, color: colors.primary, )
+        ),
+      ),
+    );
+  }
+}
+```
+
+
+- Abrimos el archivo `product_screen.dart` y agregamos el `_ProductView`
+
+
+```dart
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:basic_auth/features/shared/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class ProductScreen extends ConsumerWidget {
+  final String productId;
+  const ProductScreen({super.key, required this.productId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productState = ref.watch( productProvider(productId) );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Editar Producto'),
+        actions: [
+          IconButton(
+            onPressed: () {}, 
+            icon: const Icon(Icons.camera_alt_outlined))
+        ],
+      ),
+     body: productState.isLoading                         // -> Se agrego un ternario
+      ? const FullScreenLoader()                          // -> Se agrego
+      : _ProductView(product: productState.product!),     // -> Se agrego
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {},
+        child: const Icon(Icons.save_as_outlined),
+      ),
+    );
+  }
+}
+
+class _ProductView extends StatelessWidget {                        // -> Se agrego el _ProductView
+
+  final Product product;
+
+  const _ProductView({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+
+    final textStyles = Theme.of(context).textTheme;
+
+    return ListView(
+      children: [
+    
+          SizedBox(
+            height: 250,
+            width: 600,
+            child: _ImageGallery(images: product.images ),
+          ),
+    
+          const SizedBox( height: 10 ),
+          Center(child: Text( product.title, style: textStyles.titleSmall )),
+          const SizedBox( height: 10 ),
+          _ProductInformation( product: product ),
+          
+        ],
+    );
+  }
+}
+
+
+class _ProductInformation extends ConsumerWidget {
+  final Product product;
+  const _ProductInformation({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref ) {
+
+    
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Generales'),
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Nombre',
+            initialValue: product.title,
+          ),
+          CustomProductField( 
+            label: 'Slug',
+            initialValue: product.slug,
+          ),
+          CustomProductField( 
+            isBottomField: true,
+            label: 'Precio',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: product.price.toString(),
+          ),
+
+          const SizedBox(height: 15 ),
+          const Text('Extras'),
+
+          _SizeSelector(selectedSizes: product.sizes ),
+          const SizedBox(height: 5 ),
+          _GenderSelector( selectedGender: product.gender ),
+          
+
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Existencias',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: product.stock.toString(),
+          ),
+
+          CustomProductField( 
+            maxLines: 6,
+            label: 'Descripción',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.description,
+          ),
+
+          CustomProductField( 
+            isBottomField: true,
+            maxLines: 2,
+            label: 'Tags (Separados por coma)',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.tags.join(', '),
+          ),
+
+
+          const SizedBox(height: 100 ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class _SizeSelector extends StatelessWidget {
+  final List<String> selectedSizes;
+  final List<String> sizes = const['XS','S','M','L','XL','XXL','XXXL'];
+
+  const _SizeSelector({required this.selectedSizes});
+
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton(
+      emptySelectionAllowed: true,
+      showSelectedIcon: false,
+      segments: sizes.map((size) {
+        return ButtonSegment(
+          value: size, 
+          label: Text(size, style: const TextStyle(fontSize: 10))
+        );
+      }).toList(), 
+      selected: Set.from( selectedSizes ),
+      onSelectionChanged: (newSelection) {
+        print(newSelection);
+      },
+      multiSelectionEnabled: true,
+    );
+  }
+}
+
+class _GenderSelector extends StatelessWidget {
+  final String selectedGender;
+  final List<String> genders = const['men','women','kid'];
+  final List<IconData> genderIcons = const[
+    Icons.man,
+    Icons.woman,
+    Icons.boy,
+  ];
+
+  const _GenderSelector({required this.selectedGender});
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SegmentedButton(
+        multiSelectionEnabled: false,
+        showSelectedIcon: false,
+        style: const ButtonStyle(visualDensity: VisualDensity.compact ),
+        segments: genders.map((size) {
+          return ButtonSegment(
+            icon: Icon( genderIcons[ genders.indexOf(size) ] ),
+            value: size, 
+            label: Text(size, style: const TextStyle(fontSize: 12))
+          );
+        }).toList(), 
+        selected: { selectedGender },
+        onSelectionChanged: (newSelection) {
+          print(newSelection);
+        },
+      ),
+    );
+  }
+}
+
+
+class _ImageGallery extends StatelessWidget {
+  final List<String> images;
+  const _ImageGallery({required this.images});
+
+  @override
+  Widget build(BuildContext context) {
+
+    return PageView(
+      scrollDirection: Axis.horizontal,
+      controller: PageController(
+        viewportFraction: 0.7
+      ),
+      children: images.isEmpty
+        ? [ ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.asset('assets/images/no-image.jpg', fit: BoxFit.cover )) 
+        ]
+        : images.map((e){
+          return ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.network(e, fit: BoxFit.cover,),
+          );
+      }).toList(),
+    );
+  }
+}
+```
+
+
+#### Campos adicionales de formulario - Formz
+
+- Agregamos los imputs (title, price, slug, stock) de Formz para la vallidación.
+
+- Creamos el archivo `title.dart`
+
+```dart
+import 'package:formz/formz.dart';
+
+// Define input validation errors
+enum TitleError { empty }
+
+// Extend FormzInput and provide the input type and error type.
+class Title extends FormzInput<String, TitleError> {
+
+
+  // Call super.pure to represent an unmodified form input.
+  const Title.pure() : super.pure('');
+
+  // Call super.dirty to represent a modified form input.
+  const Title.dirty( String value ) : super.dirty(value);
+
+
+
+  String? get errorMessage {
+    if ( isValid || isPure ) return null;
+
+    if ( displayError == TitleError.empty ) return 'El campo es requerido';
+
+    return null;
+  }
+
+  // Override validator to handle validating a given input value.
+  @override
+  TitleError? validator(String value) {
+    
+    if ( value.isEmpty || value.trim().isEmpty ) return TitleError.empty;
+
+    return null;
+  }
+}
+```
+
+- Creamos el archivo `slug.dart`
+
+```dart
+import 'package:formz/formz.dart';
+
+// Define input validation errors
+enum SlugError { empty, format }
+
+// Extend FormzInput and provide the input type and error type.
+class Slug extends FormzInput<String, SlugError> {
+
+
+  // Call super.pure to represent an unmodified form input.
+  const Slug.pure() : super.pure('');
+
+  // Call super.dirty to represent a modified form input.
+  const Slug.dirty( String value ) : super.dirty(value);
+
+
+
+  String? get errorMessage {
+    if ( isValid || isPure ) return null;
+
+    if ( displayError == SlugError.empty ) return 'El campo es requerido';
+    if ( displayError == SlugError.format ) return 'El campo no tiene el formato esperado';
+
+    return null;
+  }
+
+  // Override validator to handle validating a given input value.
+  @override
+  SlugError? validator(String value) {
+    
+    if ( value.isEmpty || value.trim().isEmpty ) return SlugError.empty;
+     if ( value.contains("'") || value.contains(' ') ) return SlugError.format;
+
+    return null;
+  }
+}
+```
+
+- Creamos el archivo `price.dart`
+
+```dart
+import 'package:formz/formz.dart';
+
+// Define input validation errors
+enum PriceError { empty, value }
+
+// Extend FormzInput and provide the input type and error type.
+class Price extends FormzInput<double, PriceError> {
+
+
+  // Call super.pure to represent an unmodified form input.
+  const Price.pure() : super.pure(0.0);
+
+  // Call super.dirty to represent a modified form input.
+  const Price.dirty( double value ) : super.dirty(value);
+
+
+
+  String? get errorMessage {
+    if ( isValid || isPure ) return null;
+
+    if ( displayError == PriceError.empty ) return 'El campo es requerido';
+    if ( displayError == PriceError.value ) return 'Tiene que ser cero o mayor';
+
+    return null;
+  }
+
+  // Override validator to handle validating a given input value.
+  @override
+  PriceError? validator(double value) {
+    
+    if ( value.toString().isEmpty || value.toString().trim().isEmpty ) return PriceError.empty;
+    if ( value < 0 ) return PriceError.value;
+
+    return null;
+  }
+}
+```
+
+
+- Creamos el archivo `stock.dart`
+
+```dart
+import 'package:formz/formz.dart';
+
+// Define input validation errors
+enum StockError { empty, value, format }
+
+// Extend FormzInput and provide the input type and error type.
+class Stock extends FormzInput<int, StockError> {
+
+
+  // Call super.pure to represent an unmodified form input.
+  const Stock.pure() : super.pure(0);
+
+  // Call super.dirty to represent a modified form input.
+  const Stock.dirty( int value ) : super.dirty(value);
+
+
+
+  String? get errorMessage {
+    if ( isValid || isPure ) return null;
+
+    if ( displayError == StockError.empty ) return 'El campo es requerido';
+    if ( displayError == StockError.value ) return 'Tiene que ser cero o mayor';
+    if ( displayError == StockError.format ) return 'No tiene formato de número';
+
+    return null;
+  }
+
+  // Override validator to handle validating a given input value.
+  @override
+  StockError? validator(int value) {
+    
+    if ( value.toString().isEmpty || value.toString().trim().isEmpty ) return StockError.empty;
+
+    final isInteger = int.tryParse(value.toString()) ?? -1;
+    if ( isInteger == -1 ) return StockError.format;
+
+    if ( value < 0 ) return StockError.value;
+
+    return null;
+  }
+}
+```
+
+
+####  Product Form Provider - State
+
+- Preparar la data que vamos a enviar al backend ( hacer un posteo )
+- Creamos un nuevo provider que me sirve para manejar toda la data del formulario de producto
+
+- Creamos el archivo `product_form_provider.dart` en la carpeta `features -> products -> presentation -> providers` y la carpeta `forms`
+
+```dart
+import 'package:basic_auth/features/shared/shared.dart';
+
+//* State
+class ProductFormState {
+
+  final bool isFormValid;
+  final String? id;
+  final Title title;
+  final Slug slug;
+  final Price price;
+  final List<String> sizes;
+  final String gender;
+  final Stock inStock;
+  final String description;
+  final String tags;
+  final List<String> images;
+
+  ProductFormState({
+    this.isFormValid = false,
+    this.id,
+    this.title = const Title.dirty(''),
+    this.slug = const Slug.dirty(''),
+    this.price = const Price.dirty(0),
+    this.sizes = const [],
+    this.gender = 'men',
+    this.inStock = const Stock.dirty(0),
+    this.description = '',
+    this.tags = '',
+    this.images = const []
+  });
+
+  ProductFormState copyWith({
+    bool? isFormValid,
+    String? id,
+    Title? title,
+    Slug? slug,
+    Price? price,
+    List<String>? sizes,
+    String? gender,
+    Stock? inStock,
+    String? description,
+    String? tags,
+    List<String>? images,
+  }) => ProductFormState(
+    isFormValid: isFormValid ?? this.isFormValid,
+    id: id ?? this.id,
+    title: title ?? this.title,
+    slug: slug ?? this.slug,
+    price: price ?? this.price,
+    sizes: sizes ?? this.sizes,
+    gender: gender ?? this.gender,
+    inStock: inStock ?? this.inStock,
+    description: description ?? this.description,
+    tags: tags ?? this.tags,
+    images: images ?? this.images,
+  );
+}
+```
+
+
+#### Product Form Provider - Notifier
+
+- El Notifier va a mantener el estado del `ProductFormState` y sus cambios , pero adicionalmente va a hacer respondable de emitir la data que va hacer procesada por otro ente
+
+```dart
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/shared/shared.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:formz/formz.dart';
+
+
+//* Notifier
+class ProductFormNotifier extends StateNotifier<ProductFormState> {             // -> Se agrego el ProductFormNotifier
+
+  final void Function( Map<String, dynamic> productLike )? onSubmitCallback;
+
+  ProductFormNotifier({
+    this.onSubmitCallback,
+    required Product product,
+  }) : super(
+    ProductFormState(
+      id: product.id,
+      title: Title.dirty(product.title),
+      slug: Slug.dirty(product.slug),
+      price: Price.dirty(product.price),
+      inStock: Stock.dirty(product.stock),
+      sizes: product.sizes,
+      gender: product.gender,
+      description: product.description,
+      tags: product.tags.join(', '),
+      images: product.images,
+    )
+  );
+
+  void onTitleChanged(String value) {
+    state = state.copyWith(
+      title: Title.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onSlugChanged(String value) {
+    state = state.copyWith(
+      slug: Slug.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onPriceChanged(double value) {
+    state = state.copyWith(
+      price: Price.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onStockChanged(int value) {
+    state = state.copyWith(
+      inStock: Stock.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(value)
+      ])
+    );
+  }
+
+}
+
+
+//* State
+class ProductFormState {
+
+  final bool isFormValid;
+  final String? id;
+  final Title title;
+  final Slug slug;
+  final Price price;
+  final List<String> sizes;
+  final String gender;
+  final Stock inStock;
+  final String description;
+  final String tags;
+  final List<String> images;
+
+  ProductFormState({
+    this.isFormValid = false,
+    this.id,
+    this.title = const Title.dirty(''),
+    this.slug = const Slug.dirty(''),
+    this.price = const Price.dirty(0),
+    this.sizes = const [],
+    this.gender = 'men',
+    this.inStock = const Stock.dirty(0),
+    this.description = '',
+    this.tags = '',
+    this.images = const []
+  });
+
+  ProductFormState copyWith({
+    bool? isFormValid,
+    String? id,
+    Title? title,
+    Slug? slug,
+    Price? price,
+    List<String>? sizes,
+    String? gender,
+    Stock? inStock,
+    String? description,
+    String? tags,
+    List<String>? images,
+  }) => ProductFormState(
+    isFormValid: isFormValid ?? this.isFormValid,
+    id: id ?? this.id,
+    title: title ?? this.title,
+    slug: slug ?? this.slug,
+    price: price ?? this.price,
+    sizes: sizes ?? this.sizes,
+    gender: gender ?? this.gender,
+    inStock: inStock ?? this.inStock,
+    description: description ?? this.description,
+    tags: tags ?? this.tags,
+    images: images ?? this.images,
+  );
+}
+```
+
+
+
+#### Product Form Provider - Notifier Parte 2
+
+- Seguimos en el archivo `product_form_provider.dart`, agregando `onFormSubmit`, `_touchedEverything`,
+`onSizeChanged`,
+`onGenderChanged`,
+`onDescriptionChanged`,
+`onTagsChanged`
+
+
+```dart
+import 'package:basic_auth/config/constants/environment.dart';
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/shared/shared.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:formz/formz.dart';
+
+
+//* Notifier
+class ProductFormNotifier extends StateNotifier<ProductFormState> {
+
+  final void Function( Map<String, dynamic> productLike )? onSubmitCallback;
+
+  ProductFormNotifier({
+    this.onSubmitCallback,
+    required Product product,
+  }) : super(
+    ProductFormState(
+      id: product.id,
+      title: Title.dirty(product.title),
+      slug: Slug.dirty(product.slug),
+      price: Price.dirty(product.price),
+      inStock: Stock.dirty(product.stock),
+      sizes: product.sizes,
+      gender: product.gender,
+      description: product.description,
+      tags: product.tags.join(', '),
+      images: product.images,
+    )
+  );
+
+  Future<bool> onFormSubmit() async {                             // -> Se agrego
+    _touchedEverything();
+    if ( !state.isFormValid) return false;
+
+    if ( onSubmitCallback == null ) return false;
+
+    final productLike = {
+      
+      'id': state.id,
+      'title': state.title.value,
+      'price': state.price.value,
+      'description': state.description,
+      'slug': state.slug.value,
+      'stock': state.inStock.value,
+      'sizes': state.sizes,
+      'gender': state.gender,
+      'tags': state.tags.split(','),
+      'images': state.images.map(
+        (image) => image.replaceAll('${ Environment.apiUrl }/files/product/', '')
+      ).toList()
+    };
+
+    return true;
+   
+  }
+
+  void _touchedEverything() {                                     // -> Se agrego
+    state = state.copyWith(
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value),
+      ])
+    );
+  }
+
+  void onTitleChanged(String value) {
+    state = state.copyWith(
+      title: Title.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onSlugChanged(String value) {
+    state = state.copyWith(
+      slug: Slug.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onPriceChanged(double value) {
+    state = state.copyWith(
+      price: Price.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onStockChanged(int value) {
+    state = state.copyWith(
+      inStock: Stock.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(value)
+      ])
+    );
+  }
+
+  void onSizeChanged(List<String> sizes) {                  // -> Se agrego
+    state = state.copyWith(
+      sizes: sizes
+    );
+  }
+
+  void onGenderChanged(String gender) {                     // -> Se agrego
+    state = state.copyWith(
+      gender: gender
+    );
+  }
+
+  void onDescriptionChanged(String description) {           // -> Se agrego
+    state = state.copyWith(
+      description: description
+    );
+  }
+
+  void onTagsChanged(String tags) {                         // -> Se agrego
+    state = state.copyWith(
+      tags: tags
+    );
+  }
+
+
+}
+
+
+//* State
+class ProductFormState {
+
+  final bool isFormValid;
+  final String? id;
+  final Title title;
+  final Slug slug;
+  final Price price;
+  final List<String> sizes;
+  final String gender;
+  final Stock inStock;
+  final String description;
+  final String tags;
+  final List<String> images;
+
+  ProductFormState({
+    this.isFormValid = false,
+    this.id,
+    this.title = const Title.dirty(''),
+    this.slug = const Slug.dirty(''),
+    this.price = const Price.dirty(0),
+    this.sizes = const [],
+    this.gender = 'men',
+    this.inStock = const Stock.dirty(0),
+    this.description = '',
+    this.tags = '',
+    this.images = const []
+  });
+
+  ProductFormState copyWith({
+    bool? isFormValid,
+    String? id,
+    Title? title,
+    Slug? slug,
+    Price? price,
+    List<String>? sizes,
+    String? gender,
+    Stock? inStock,
+    String? description,
+    String? tags,
+    List<String>? images,
+  }) => ProductFormState(
+    isFormValid: isFormValid ?? this.isFormValid,
+    id: id ?? this.id,
+    title: title ?? this.title,
+    slug: slug ?? this.slug,
+    price: price ?? this.price,
+    sizes: sizes ?? this.sizes,
+    gender: gender ?? this.gender,
+    inStock: inStock ?? this.inStock,
+    description: description ?? this.description,
+    tags: tags ?? this.tags,
+    images: images ?? this.images,
+  );
+}
+```
+
+
+#### Product Form Provider - Provider
+
+- Agregamos el provider enn el archivo `product_form_provider.dart`
+
+```dart
+import 'package:basic_auth/config/constants/environment.dart';
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/shared/shared.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:formz/formz.dart';
+
+
+//* Provider
+final productFormProvider = StateNotifierProvider.autoDispose.family<ProductFormNotifier,  ProductFormState, Product>(
+  (ref, product) {
+
+    // TODO: createUpdateCallback
+
+    return ProductFormNotifier(
+      product: product,
+      // TODO: onSubmitCallback: createUpdateCallback
+    );
+  }
+
+);
+
+
+//* Notifier
+class ProductFormNotifier extends StateNotifier<ProductFormState> {
+
+  final void Function( Map<String, dynamic> productLike )? onSubmitCallback;
+
+  ProductFormNotifier({
+    this.onSubmitCallback,
+    required Product product,
+  }) : super(
+    ProductFormState(
+      id: product.id,
+      title: Title.dirty(product.title),
+      slug: Slug.dirty(product.slug),
+      price: Price.dirty(product.price),
+      inStock: Stock.dirty(product.stock),
+      sizes: product.sizes,
+      gender: product.gender,
+      description: product.description,
+      tags: product.tags.join(', '),
+      images: product.images,
+    )
+  );
+
+  Future<bool> onFormSubmit() async {
+    _touchedEverything();
+    if ( !state.isFormValid) return false;
+
+    if ( onSubmitCallback == null ) return false;
+
+    final productLike = {
+      
+      'id': state.id,
+      'title': state.title.value,
+      'price': state.price.value,
+      'description': state.description,
+      'slug': state.slug.value,
+      'stock': state.inStock.value,
+      'sizes': state.sizes,
+      'gender': state.gender,
+      'tags': state.tags.split(','),
+      'images': state.images.map(
+        (image) => image.replaceAll('${ Environment.apiUrl }/files/product/', '')
+      ).toList()
+    };
+
+    return true;
+   
+  }
+
+  void _touchedEverything() {
+    state = state.copyWith(
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value),
+      ])
+    );
+  }
+
+  void onTitleChanged(String value) {
+    state = state.copyWith(
+      title: Title.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onSlugChanged(String value) {
+    state = state.copyWith(
+      slug: Slug.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onPriceChanged(double value) {
+    state = state.copyWith(
+      price: Price.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onStockChanged(int value) {
+    state = state.copyWith(
+      inStock: Stock.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(value)
+      ])
+    );
+  }
+
+  void onSizeChanged(List<String> sizes) {
+    state = state.copyWith(
+      sizes: sizes
+    );
+  }
+
+  void onGenderChanged(String gender) {
+    state = state.copyWith(
+      gender: gender
+    );
+  }
+
+  void onDescriptionChanged(String description) {
+    state = state.copyWith(
+      description: description
+    );
+  }
+
+  void onTagsChanged(String tags) {
+    state = state.copyWith(
+      tags: tags
+    );
+  }
+
+
+}
+
+
+//* State
+class ProductFormState {
+
+  final bool isFormValid;
+  final String? id;
+  final Title title;
+  final Slug slug;
+  final Price price;
+  final List<String> sizes;
+  final String gender;
+  final Stock inStock;
+  final String description;
+  final String tags;
+  final List<String> images;
+
+  ProductFormState({
+    this.isFormValid = false,
+    this.id,
+    this.title = const Title.dirty(''),
+    this.slug = const Slug.dirty(''),
+    this.price = const Price.dirty(0),
+    this.sizes = const [],
+    this.gender = 'men',
+    this.inStock = const Stock.dirty(0),
+    this.description = '',
+    this.tags = '',
+    this.images = const []
+  });
+
+  ProductFormState copyWith({
+    bool? isFormValid,
+    String? id,
+    Title? title,
+    Slug? slug,
+    Price? price,
+    List<String>? sizes,
+    String? gender,
+    Stock? inStock,
+    String? description,
+    String? tags,
+    List<String>? images,
+  }) => ProductFormState(
+    isFormValid: isFormValid ?? this.isFormValid,
+    id: id ?? this.id,
+    title: title ?? this.title,
+    slug: slug ?? this.slug,
+    price: price ?? this.price,
+    sizes: sizes ?? this.sizes,
+    gender: gender ?? this.gender,
+    inStock: inStock ?? this.inStock,
+    description: description ?? this.description,
+    tags: tags ?? this.tags,
+    images: images ?? this.images,
+  );
+}
+```
+
+
+#### Conectar el provider con el formulario
+
+- Abrir el archivo `product_screen.dart` y transformar el `_ProductView` de un `StatelessWidget` a un `ConsumerWidget`
+
+
+```dart
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:basic_auth/features/shared/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class ProductScreen extends ConsumerWidget {
+  final String productId;
+  const ProductScreen({super.key, required this.productId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productState = ref.watch( productProvider(productId) );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Editar Producto'),
+        actions: [
+          IconButton(
+            onPressed: () {}, 
+            icon: const Icon(Icons.camera_alt_outlined))
+        ],
+      ),
+     body: productState.isLoading
+      ? const FullScreenLoader()
+      : _ProductView(product: productState.product!),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {},
+        child: const Icon(Icons.save_as_outlined),
+      ),
+    );
+  }
+}
+
+class _ProductView extends ConsumerWidget {                             // -> Se agrego un ConsumerWidget
+
+  final Product product;
+
+  const _ProductView({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {                     // -> Se agrego
+
+    final productForm = ref.watch(productFormProvider(product));          // -> Se agrego
+
+    final textStyles = Theme.of(context).textTheme;
+
+    return ListView(
+      children: [
+    
+          SizedBox(
+            height: 250,
+            width: 600,
+            child: _ImageGallery(images: productForm.images ),            // -> Se actualizo con productForm
+          ),
+    
+          const SizedBox( height: 10 ),
+          Center(child: Text( productForm.title.value, style: textStyles.titleSmall )),   // -> Se actualizo con productForm
+          const SizedBox( height: 10 ),
+          _ProductInformation( product: product ),
+          
+        ],
+    );
+  }
+}
+
+
+class _ProductInformation extends ConsumerWidget {
+  final Product product;
+  const _ProductInformation({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref ) {
+
+    final productForm = ref.watch(productFormProvider(product));      // -> Se agrego
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Generales'),
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Nombre',
+            initialValue: productForm.title.value,                                      // -> Se actualizo con productForm
+            onChanged: ref.read(productFormProvider(product).notifier).onTitleChanged,  // -> Se agrego
+            errorMessage: productForm.title.errorMessage,                               // -> Se agrego
+          ),
+          CustomProductField( 
+            label: 'Slug',
+            initialValue: productForm.slug.value,                                       // -> Se agrego
+            onChanged: ref.read(productFormProvider(product).notifier).onSlugChanged,   // -> Se agrego
+            errorMessage: productForm.slug.errorMessage,                                // -> Se agrego
+          ),
+          CustomProductField( 
+            isBottomField: true,
+            label: 'Precio',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.price.value.toString(),                           // -> Se agrego
+             onChanged: (value)
+              => ref.read(productFormProvider(product).notifier)
+                .onPriceChanged(double.tryParse(value) ?? 0),                           // -> Se agrego
+            errorMessage: productForm.price.errorMessage,                               // -> Se agrego
+          ),
+
+          const SizedBox(height: 15 ),
+          const Text('Extras'),
+
+          _SizeSelector(selectedSizes: product.sizes ),
+          const SizedBox(height: 5 ),
+          _GenderSelector( selectedGender: product.gender ),
+          
+
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Existencias',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.inStock.value.toString(),                     // -> Se actualizo con productForm
+            onChanged: (value) 
+              => ref.read(productFormProvider(product).notifier)
+                .onStockChanged(int.tryParse(value) ?? 0),                          // -> Se agrego
+            errorMessage: productForm.inStock.errorMessage,                         // -> Se agrego
+          ),    
+
+          CustomProductField( 
+            maxLines: 6,
+            label: 'Descripción',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.description,
+          ),
+
+          CustomProductField( 
+            isBottomField: true,
+            maxLines: 2,
+            label: 'Tags (Separados por coma)',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.tags.join(', '),
+          ),
+
+
+          const SizedBox(height: 100 ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class _SizeSelector extends StatelessWidget {
+  final List<String> selectedSizes;
+  final List<String> sizes = const['XS','S','M','L','XL','XXL','XXXL'];
+
+  const _SizeSelector({required this.selectedSizes});
+
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton(
+      emptySelectionAllowed: true,
+      showSelectedIcon: false,
+      segments: sizes.map((size) {
+        return ButtonSegment(
+          value: size, 
+          label: Text(size, style: const TextStyle(fontSize: 10))
+        );
+      }).toList(), 
+      selected: Set.from( selectedSizes ),
+      onSelectionChanged: (newSelection) {
+        print(newSelection);
+      },
+      multiSelectionEnabled: true,
+    );
+  }
+}
+
+class _GenderSelector extends StatelessWidget {
+  final String selectedGender;
+  final List<String> genders = const['men','women','kid'];
+  final List<IconData> genderIcons = const[
+    Icons.man,
+    Icons.woman,
+    Icons.boy,
+  ];
+
+  const _GenderSelector({required this.selectedGender});
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SegmentedButton(
+        multiSelectionEnabled: false,
+        showSelectedIcon: false,
+        style: const ButtonStyle(visualDensity: VisualDensity.compact ),
+        segments: genders.map((size) {
+          return ButtonSegment(
+            icon: Icon( genderIcons[ genders.indexOf(size) ] ),
+            value: size, 
+            label: Text(size, style: const TextStyle(fontSize: 12))
+          );
+        }).toList(), 
+        selected: { selectedGender },
+        onSelectionChanged: (newSelection) {
+          print(newSelection);
+        },
+      ),
+    );
+  }
+}
+
+
+class _ImageGallery extends StatelessWidget {
+  final List<String> images;
+  const _ImageGallery({required this.images});
+
+  @override
+  Widget build(BuildContext context) {
+
+    return PageView(
+      scrollDirection: Axis.horizontal,
+      controller: PageController(
+        viewportFraction: 0.7
+      ),
+      children: images.isEmpty
+        ? [ ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.asset('assets/images/no-image.jpg', fit: BoxFit.cover )) 
+        ]
+        : images.map((e){
+          return ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.network(e, fit: BoxFit.cover,),
+          );
+      }).toList(),
+    );
+  }
+}
+```
+
+
+#### Mostrar errores en Stock y Price
+
+- Abrimos el archivo `product_screen.dart` y actualizamos el `Price` y el `Stock`
+
+```dart
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:basic_auth/features/shared/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class ProductScreen extends ConsumerWidget {
+  final String productId;
+  const ProductScreen({super.key, required this.productId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productState = ref.watch( productProvider(productId) );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Editar Producto'),
+        actions: [
+          IconButton(
+            onPressed: () {}, 
+            icon: const Icon(Icons.camera_alt_outlined))
+        ],
+      ),
+     body: productState.isLoading
+      ? const FullScreenLoader()
+      : _ProductView(product: productState.product!),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {},
+        child: const Icon(Icons.save_as_outlined),
+      ),
+    );
+  }
+}
+
+class _ProductView extends ConsumerWidget {
+
+  final Product product;
+
+  const _ProductView({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productForm = ref.watch(productFormProvider(product));
+
+    final textStyles = Theme.of(context).textTheme;
+
+    return ListView(
+      children: [
+    
+          SizedBox(
+            height: 250,
+            width: 600,
+            child: _ImageGallery(images: productForm.images ),
+          ),
+    
+          const SizedBox( height: 10 ),
+          Center(child: Text( productForm.title.value, style: textStyles.titleSmall )),
+          const SizedBox( height: 10 ),
+          _ProductInformation( product: product ),
+          
+        ],
+    );
+  }
+}
+
+
+class _ProductInformation extends ConsumerWidget {
+  final Product product;
+  const _ProductInformation({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref ) {
+
+    final productForm = ref.watch(productFormProvider(product));
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Generales'),
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Nombre',
+            initialValue: productForm.title.value,
+            onChanged: ref.read(productFormProvider(product).notifier).onTitleChanged,
+            errorMessage: productForm.title.errorMessage,
+          ),
+          CustomProductField( 
+            label: 'Slug',
+            initialValue: productForm.slug.value,
+            onChanged: ref.read(productFormProvider(product).notifier).onSlugChanged,
+            errorMessage: productForm.slug.errorMessage,
+          ),
+          CustomProductField( 
+            isBottomField: true,
+            label: 'Precio',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.price.value.toString(),
+             onChanged: (value)
+              => ref.read(productFormProvider(product).notifier)
+                .onPriceChanged(double.tryParse(value) ?? -1),                     // -> se actualizo
+            errorMessage: productForm.price.errorMessage,
+          ),
+
+          const SizedBox(height: 15 ),
+          const Text('Extras'),
+
+          _SizeSelector(selectedSizes: product.sizes ),
+          const SizedBox(height: 5 ),
+          _GenderSelector( selectedGender: product.gender ),
+          
+
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Existencias',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.inStock.value.toString(),
+            onChanged: (value) 
+              => ref.read(productFormProvider(product).notifier)
+                .onStockChanged(int.tryParse(value) ?? -1),                       // -> se actualizo
+            errorMessage: productForm.inStock.errorMessage,
+          ),
+
+          CustomProductField( 
+            maxLines: 6,
+            label: 'Descripción',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.description,
+          ),
+
+          CustomProductField( 
+            isBottomField: true,
+            maxLines: 2,
+            label: 'Tags (Separados por coma)',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.tags.join(', '),
+          ),
+
+
+          const SizedBox(height: 100 ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class _SizeSelector extends StatelessWidget {
+  final List<String> selectedSizes;
+  final List<String> sizes = const['XS','S','M','L','XL','XXL','XXXL'];
+
+  const _SizeSelector({required this.selectedSizes});
+
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton(
+      emptySelectionAllowed: true,
+      showSelectedIcon: false,
+      segments: sizes.map((size) {
+        return ButtonSegment(
+          value: size, 
+          label: Text(size, style: const TextStyle(fontSize: 10))
+        );
+      }).toList(), 
+      selected: Set.from( selectedSizes ),
+      onSelectionChanged: (newSelection) {
+        print(newSelection);
+      },
+      multiSelectionEnabled: true,
+    );
+  }
+}
+
+class _GenderSelector extends StatelessWidget {
+  final String selectedGender;
+  final List<String> genders = const['men','women','kid'];
+  final List<IconData> genderIcons = const[
+    Icons.man,
+    Icons.woman,
+    Icons.boy,
+  ];
+
+  const _GenderSelector({required this.selectedGender});
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SegmentedButton(
+        multiSelectionEnabled: false,
+        showSelectedIcon: false,
+        style: const ButtonStyle(visualDensity: VisualDensity.compact ),
+        segments: genders.map((size) {
+          return ButtonSegment(
+            icon: Icon( genderIcons[ genders.indexOf(size) ] ),
+            value: size, 
+            label: Text(size, style: const TextStyle(fontSize: 12))
+          );
+        }).toList(), 
+        selected: { selectedGender },
+        onSelectionChanged: (newSelection) {
+          print(newSelection);
+        },
+      ),
+    );
+  }
+}
+
+
+class _ImageGallery extends StatelessWidget {
+  final List<String> images;
+  const _ImageGallery({required this.images});
+
+  @override
+  Widget build(BuildContext context) {
+
+    return PageView(
+      scrollDirection: Axis.horizontal,
+      controller: PageController(
+        viewportFraction: 0.7
+      ),
+      children: images.isEmpty
+        ? [ ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.asset('assets/images/no-image.jpg', fit: BoxFit.cover )) 
+        ]
+        : images.map((e){
+          return ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.network(e, fit: BoxFit.cover,),
+          );
+      }).toList(),
+    );
+  }
+}
+```
+
+
+- Abrimos el archivo `price.dart`, para arreglar el mensaje de error
+
+```dart
+import 'package:formz/formz.dart';
+
+// Define input validation errors
+enum PriceError { empty, value }
+
+// Extend FormzInput and provide the input type and error type.
+class Price extends FormzInput<double, PriceError> {
+
+
+  // Call super.pure to represent an unmodified form input.
+  const Price.pure() : super.pure(0.0);
+
+  // Call super.dirty to represent a modified form input.
+  const Price.dirty( double value ) : super.dirty(value);
+
+
+
+  String? get errorMessage {
+    if ( isValid || isPure ) return null;
+
+    if ( displayError == PriceError.empty ) return 'El campo es requerido';
+    if ( displayError == PriceError.value ) return 'Tiene que ser un número mayor o igual a cero';  // -> Se Arreglo mensaje de error
+
+    return null;
+  }
+
+  // Override validator to handle validating a given input value.
+  @override
+  PriceError? validator(double value) {
+    
+    if ( value.toString().isEmpty || value.toString().trim().isEmpty ) return PriceError.empty;
+    if ( value < 0 ) return PriceError.value;
+
+    return null;
+  }
+}
+```
+
+- Abrimos el archivo `stock.dart`, para arreglar el mensaje de error
+
+```dart
+import 'package:formz/formz.dart';
+
+// Define input validation errors
+enum StockError { empty, value, format }
+
+// Extend FormzInput and provide the input type and error type.
+class Stock extends FormzInput<int, StockError> {
+
+
+  // Call super.pure to represent an unmodified form input.
+  const Stock.pure() : super.pure(0);
+
+  // Call super.dirty to represent a modified form input.
+  const Stock.dirty( int value ) : super.dirty(value);
+
+
+
+  String? get errorMessage {
+    if ( isValid || isPure ) return null;
+
+    if ( displayError == StockError.empty ) return 'El campo es requerido';
+    if ( displayError == StockError.value ) return 'Tiene que ser un número mayor o igual a cero';  // -> Se arreglo el mensaje de error
+    if ( displayError == StockError.format ) return 'No tiene formato de número';
+
+    return null;
+  }
+
+  // Override validator to handle validating a given input value.
+  @override
+  StockError? validator(int value) {
+    
+    if ( value.toString().isEmpty || value.toString().trim().isEmpty ) return StockError.empty;
+
+    final isInteger = int.tryParse(value.toString()) ?? -1;
+    if ( isInteger == -1 ) return StockError.format;
+
+    if ( value < 0 ) return StockError.value;
+
+    return null;
+  }
+}
+```
+
+
+- Abrimos el archivo `custom_product_fiel.dart`, para agregar un padding al mensaje de error en los inputs
+
+```dart
+import 'package:flutter/material.dart';
+
+
+class CustomProductField extends StatelessWidget {
+
+  final bool isTopField; // La idea es que tenga bordes redondeados arriba
+  final bool isBottomField; // La idea es que tenga bordes redondeados abajo
+  final String? label;
+  final String? hint;
+  final String? errorMessage;
+  final bool obscureText;
+  final TextInputType? keyboardType;
+  final int maxLines;
+  final String initialValue;
+  final Function(String)? onChanged;
+  final Function(String)? onFieldSubmitted;
+  final String? Function(String?)? validator;
+
+  const CustomProductField({
+    super.key, 
+    this.isTopField = false, 
+    this.isBottomField = false, 
+    this.label, 
+    this.hint, 
+    this.errorMessage, 
+    this.obscureText = false,
+    this.keyboardType = TextInputType.text,
+    this.maxLines = 1,
+    this.initialValue = '',
+    this.onChanged, 
+    this.onFieldSubmitted, 
+    this.validator, 
+  });
+
+  @override
+  Widget build(BuildContext context) {
+
+    final colors = Theme.of(context).colorScheme;
+
+    final border = OutlineInputBorder(
+      borderSide: const BorderSide(color: Colors.transparent),
+      borderRadius: BorderRadius.circular(40)
+    );
+
+    const borderRadius = Radius.circular(15);
+
+    return Container(
+      padding: const EdgeInsets.only(bottom: 8),                    // -> Se agrego el padding
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: isTopField ? borderRadius : Radius.zero, 
+          topRight: isTopField ? borderRadius : Radius.zero, 
+          bottomLeft: isBottomField ? borderRadius : Radius.zero,
+          bottomRight: isBottomField ? borderRadius : Radius.zero,
+        ),
+        boxShadow: [
+          if (isBottomField)
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 5,
+              offset: const Offset(0,3)
+            )
+        ]
+      ),
+      child: TextFormField(
+        onChanged: onChanged,
+        onFieldSubmitted: onFieldSubmitted,
+        validator: validator,
+        obscureText: obscureText,
+        keyboardType: keyboardType,
+        style: const TextStyle( fontSize: 15, color: Colors.black54 ),
+        maxLines: maxLines,
+        initialValue: initialValue,
+        decoration: InputDecoration(
+          floatingLabelBehavior: maxLines > 1 ? FloatingLabelBehavior.always : FloatingLabelBehavior.auto,
+          floatingLabelStyle: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15),
+          enabledBorder: border,
+          focusedBorder: border,
+          errorBorder: border.copyWith( borderSide: const BorderSide( color: Colors.transparent )),
+          focusedErrorBorder: border.copyWith( borderSide: const BorderSide( color: Colors.transparent )),
+          isDense: true,
+          label: label != null ? Text(label!) : null,
+          hintText: hint,
+          errorText: errorMessage,
+          focusColor: colors.primary,
+          // icon: Icon( Icons.supervised_user_circle_outlined, color: colors.primary, )
+        ),
+      ),
+    );
+  }
+}
+```
+
+
+
+#### Conectar campos faltantes
+
+- Los campos faltantes son: Sizes, Gender, Description y Tags
+
+- Abrimos el archivo `product_screen.dart`
+
+```dart
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:basic_auth/features/shared/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class ProductScreen extends ConsumerWidget {
+  final String productId;
+  const ProductScreen({super.key, required this.productId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productState = ref.watch( productProvider(productId) );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Editar Producto'),
+        actions: [
+          IconButton(
+            onPressed: () {}, 
+            icon: const Icon(Icons.camera_alt_outlined))
+        ],
+      ),
+     body: productState.isLoading
+      ? const FullScreenLoader()
+      : _ProductView(product: productState.product!),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {},
+        child: const Icon(Icons.save_as_outlined),
+      ),
+    );
+  }
+}
+
+class _ProductView extends ConsumerWidget {
+
+  final Product product;
+
+  const _ProductView({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productForm = ref.watch(productFormProvider(product));
+
+    final textStyles = Theme.of(context).textTheme;
+
+    return ListView(
+      children: [
+    
+          SizedBox(
+            height: 250,
+            width: 600,
+            child: _ImageGallery(images: productForm.images ),
+          ),
+    
+          const SizedBox( height: 10 ),
+          Center(child: Text( productForm.title.value, style: textStyles.titleSmall )),
+          const SizedBox( height: 10 ),
+          _ProductInformation( product: product ),
+          
+        ],
+    );
+  }
+}
+
+
+class _ProductInformation extends ConsumerWidget {
+  final Product product;
+  const _ProductInformation({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref ) {
+
+    final productForm = ref.watch(productFormProvider(product));
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Generales'),
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Nombre',
+            initialValue: productForm.title.value,
+            onChanged: ref.read(productFormProvider(product).notifier).onTitleChanged,
+            errorMessage: productForm.title.errorMessage,
+          ),
+          CustomProductField( 
+            label: 'Slug',
+            initialValue: productForm.slug.value,
+            onChanged: ref.read(productFormProvider(product).notifier).onSlugChanged,
+            errorMessage: productForm.slug.errorMessage,
+          ),
+          CustomProductField( 
+            isBottomField: true,
+            label: 'Precio',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.price.value.toString(),
+             onChanged: (value)
+              => ref.read(productFormProvider(product).notifier)
+                .onPriceChanged(double.tryParse(value) ?? -1),
+            errorMessage: productForm.price.errorMessage,
+          ),
+
+          const SizedBox(height: 15 ),
+          const Text('Extras'),
+
+          _SizeSelector(
+            selectedSizes: productForm.sizes,
+            onSizesChanged: ref.read(productFormProvider(product).notifier).onSizeChanged,    // -> Se agrego
+          ),
+          const SizedBox(height: 5 ),
+          _GenderSelector( 
+            selectedGender: productForm.gender,
+            onGenderChanged: ref.read(productFormProvider(product).notifier).onGenderChanged,  // -> Se agrego
+          ),
+          
+
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Existencias',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.inStock.value.toString(),
+            onChanged: (value) 
+              => ref.read(productFormProvider(product).notifier)
+                .onStockChanged(int.tryParse(value) ?? -1),
+            errorMessage: productForm.inStock.errorMessage,
+          ),
+
+          CustomProductField( 
+            maxLines: 6,
+            label: 'Descripción',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.description,
+            onChanged: ref.read(productFormProvider(product).notifier).onDescriptionChanged,  // -> Se agrego
+          ),
+
+          CustomProductField( 
+            isBottomField: true,
+            maxLines: 2,
+            label: 'Tags (Separados por coma)',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.tags.join(', '),
+            onChanged: ref.read(productFormProvider(product).notifier).onTagsChanged,       // -> Se agrego
+          ),
+
+
+          const SizedBox(height: 100 ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class _SizeSelector extends StatelessWidget {
+  final List<String> selectedSizes;
+  final List<String> sizes = const['XS','S','M','L','XL','XXL','XXXL'];
+
+  final void Function(List<String> selectedSizes) onSizesChanged;         // -> Se agrego
+
+  const _SizeSelector({
+    required this.selectedSizes, 
+    required this.onSizesChanged                                         // -> Se agrego
+  });
+
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton(
+      emptySelectionAllowed: true,
+      showSelectedIcon: false,
+      segments: sizes.map((size) {
+        return ButtonSegment(
+          value: size, 
+          label: Text(size, style: const TextStyle(fontSize: 10))
+        );
+      }).toList(), 
+      selected: Set.from( selectedSizes ),
+      onSelectionChanged: (newSelection) {
+        onSizesChanged(List.from(newSelection));                        // -> Se agrego
+      },
+      multiSelectionEnabled: true,
+    );
+  }
+}
+
+class _GenderSelector extends StatelessWidget {
+  final String selectedGender;
+  final List<String> genders = const['men','women','kid'];
+  final List<IconData> genderIcons = const[
+    Icons.man,
+    Icons.woman,
+    Icons.boy,
+  ];
+
+  final void Function(String selectedGender) onGenderChanged;           // -> Se agrego
+
+  const _GenderSelector({
+    required this.selectedGender, 
+    required this.onGenderChanged                                       // -> Se agrego
+  });
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SegmentedButton(
+        multiSelectionEnabled: false,
+        showSelectedIcon: false,
+        style: const ButtonStyle(visualDensity: VisualDensity.compact ),
+        segments: genders.map((size) {
+          return ButtonSegment(
+            icon: Icon( genderIcons[ genders.indexOf(size) ] ),
+            value: size, 
+            label: Text(size, style: const TextStyle(fontSize: 12))
+          );
+        }).toList(), 
+        selected: { selectedGender },
+        onSelectionChanged: (newSelection) {
+          onGenderChanged(newSelection.first);                          // -> Se agrego
+        },
+      ),
+    );
+  }
+}
+
+
+class _ImageGallery extends StatelessWidget {
+  final List<String> images;
+  const _ImageGallery({required this.images});
+
+  @override
+  Widget build(BuildContext context) {
+
+    return PageView(
+      scrollDirection: Axis.horizontal,
+      controller: PageController(
+        viewportFraction: 0.7
+      ),
+      children: images.isEmpty
+        ? [ ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.asset('assets/images/no-image.jpg', fit: BoxFit.cover )) 
+        ]
+        : images.map((e){
+          return ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.network(e, fit: BoxFit.cover,),
+          );
+      }).toList(),
+    );
+  }
+}
+```
+
+
+#### Probar el backend - Actualización de Producto
+
+- Avrimos el archivo `product_screen.dart` y llamamos desde el boton guardar la funcion `onFormSubmit`
+
+```dart
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:basic_auth/features/shared/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class ProductScreen extends ConsumerWidget {
+  final String productId;
+  const ProductScreen({super.key, required this.productId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productState = ref.watch( productProvider(productId) );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Editar Producto'),
+        actions: [
+          IconButton(
+            onPressed: () {}, 
+            icon: const Icon(Icons.camera_alt_outlined))
+        ],
+      ),
+     body: productState.isLoading
+      ? const FullScreenLoader()
+      : _ProductView(product: productState.product!),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          if ( productState.product == null ) return;                                   // -> Se agrego
+
+          ref.read(productFormProvider(productState.product!).notifier).onFormSubmit(); // -> Se agrego
+        },
+        child: const Icon(Icons.save_as_outlined),
+      ),
+    );
+  }
+}
+
+class _ProductView extends ConsumerWidget {
+
+  final Product product;
+
+  const _ProductView({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productForm = ref.watch(productFormProvider(product));
+
+    final textStyles = Theme.of(context).textTheme;
+
+    return ListView(
+      children: [
+    
+          SizedBox(
+            height: 250,
+            width: 600,
+            child: _ImageGallery(images: productForm.images ),
+          ),
+    
+          const SizedBox( height: 10 ),
+          Center(child: Text( productForm.title.value, style: textStyles.titleSmall )),
+          const SizedBox( height: 10 ),
+          _ProductInformation( product: product ),
+          
+        ],
+    );
+  }
+}
+
+
+class _ProductInformation extends ConsumerWidget {
+  final Product product;
+  const _ProductInformation({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref ) {
+
+    final productForm = ref.watch(productFormProvider(product));
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Generales'),
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Nombre',
+            initialValue: productForm.title.value,
+            onChanged: ref.read(productFormProvider(product).notifier).onTitleChanged,
+            errorMessage: productForm.title.errorMessage,
+          ),
+          CustomProductField( 
+            label: 'Slug',
+            initialValue: productForm.slug.value,
+            onChanged: ref.read(productFormProvider(product).notifier).onSlugChanged,
+            errorMessage: productForm.slug.errorMessage,
+          ),
+          CustomProductField( 
+            isBottomField: true,
+            label: 'Precio',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.price.value.toString(),
+             onChanged: (value)
+              => ref.read(productFormProvider(product).notifier)
+                .onPriceChanged(double.tryParse(value) ?? -1),
+            errorMessage: productForm.price.errorMessage,
+          ),
+
+          const SizedBox(height: 15 ),
+          const Text('Extras'),
+
+          _SizeSelector(
+            selectedSizes: productForm.sizes,
+            onSizesChanged: ref.read(productFormProvider(product).notifier).onSizeChanged,
+          ),
+          const SizedBox(height: 5 ),
+          _GenderSelector( 
+            selectedGender: productForm.gender,
+            onGenderChanged: ref.read(productFormProvider(product).notifier).onGenderChanged, 
+          ),
+          
+
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Existencias',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.inStock.value.toString(),
+            onChanged: (value) 
+              => ref.read(productFormProvider(product).notifier)
+                .onStockChanged(int.tryParse(value) ?? -1),
+            errorMessage: productForm.inStock.errorMessage,
+          ),
+
+          CustomProductField( 
+            maxLines: 6,
+            label: 'Descripción',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.description,
+            onChanged: ref.read(productFormProvider(product).notifier).onDescriptionChanged,
+          ),
+
+          CustomProductField( 
+            isBottomField: true,
+            maxLines: 2,
+            label: 'Tags (Separados por coma)',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.tags.join(', '),
+            onChanged: ref.read(productFormProvider(product).notifier).onTagsChanged,
+          ),
+
+
+          const SizedBox(height: 100 ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class _SizeSelector extends StatelessWidget {
+  final List<String> selectedSizes;
+  final List<String> sizes = const['XS','S','M','L','XL','XXL','XXXL'];
+
+  final void Function(List<String> selectedSizes) onSizesChanged; 
+
+  const _SizeSelector({
+    required this.selectedSizes, 
+    required this.onSizesChanged
+  });
+
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton(
+      emptySelectionAllowed: true,
+      showSelectedIcon: false,
+      segments: sizes.map((size) {
+        return ButtonSegment(
+          value: size, 
+          label: Text(size, style: const TextStyle(fontSize: 10))
+        );
+      }).toList(), 
+      selected: Set.from( selectedSizes ),
+      onSelectionChanged: (newSelection) {
+        onSizesChanged(List.from(newSelection));
+      },
+      multiSelectionEnabled: true,
+    );
+  }
+}
+
+class _GenderSelector extends StatelessWidget {
+  final String selectedGender;
+  final List<String> genders = const['men','women','kid'];
+  final List<IconData> genderIcons = const[
+    Icons.man,
+    Icons.woman,
+    Icons.boy,
+  ];
+
+  final void Function(String selectedGender) onGenderChanged;
+
+  const _GenderSelector({
+    required this.selectedGender, 
+    required this.onGenderChanged
+  });
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SegmentedButton(
+        multiSelectionEnabled: false,
+        showSelectedIcon: false,
+        style: const ButtonStyle(visualDensity: VisualDensity.compact ),
+        segments: genders.map((size) {
+          return ButtonSegment(
+            icon: Icon( genderIcons[ genders.indexOf(size) ] ),
+            value: size, 
+            label: Text(size, style: const TextStyle(fontSize: 12))
+          );
+        }).toList(), 
+        selected: { selectedGender },
+        onSelectionChanged: (newSelection) {
+          onGenderChanged(newSelection.first);
+        },
+      ),
+    );
+  }
+}
+
+
+class _ImageGallery extends StatelessWidget {
+  final List<String> images;
+  const _ImageGallery({required this.images});
+
+  @override
+  Widget build(BuildContext context) {
+
+    return PageView(
+      scrollDirection: Axis.horizontal,
+      controller: PageController(
+        viewportFraction: 0.7
+      ),
+      children: images.isEmpty
+        ? [ ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.asset('assets/images/no-image.jpg', fit: BoxFit.cover )) 
+        ]
+        : images.map((e){
+          return ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.network(e, fit: BoxFit.cover,),
+          );
+      }).toList(),
+    );
+  }
+}
+```
+
+
+
+#### Implementar método createUpdateProduct
+
+- Abrimos el archivo `products_datasource_impl.dart`, para implementar el metodo `createUpdateProduct`
+
+
+```dart
+
+import 'package:dio/dio.dart';
+import 'package:basic_auth/config/config.dart';
+import 'package:basic_auth/features/products/domain/domain.dart';
+
+import '../errors/product_errors.dart';
+import '../mappers/product_mapper.dart';
+
+class ProductsDatasourceImpl extends ProductsDatasource {
+
+  //* Configurar despues Dio, por eso se usa late, cuando se utilicen los metodos ya va a estar configurado Dio
+  late final Dio dio;
+  final String accessToken;
+
+  ProductsDatasourceImpl({
+    required this.accessToken
+  }) : dio = Dio(
+    BaseOptions(
+      baseUrl:  Environment.apiUrl,
+      headers: {
+        'Authorization': 'Bearer $accessToken'
+      }
+    )
+  );
+  
+  @override
+  Future<Product> createUpdateProduct(Map<String, dynamic> productLike) async {
+    
+    try {                                                                             // -> Se agrego
+
+      final String? productId = productLike['id'];                                    // -> Se agrego
+      final String method = (productId == null) ? 'POST' : 'PATCH';                   // -> Se agrego
+      final String url = (productId == null) ? '/products' : '/products/$productId';  // -> Se agrego
+
+      productLike.remove('id');                                                       // -> Se agrego
+
+      final response = await dio.request(                                             // -> Se agrego
+        url,                                                                          // -> Se agrego
+        data: productLike,                                                            // -> Se agrego
+        options: Options(                                                             // -> Se agrego
+          method: method                                                              // -> Se agrego
+        )
+      );
+
+      final product = ProductMapper.jsonToEntity(response.data);                      // -> Se agrego
+      return product;                                                                 // -> Se agrego
+      
+    } catch (e) {
+      throw Exception();                                                              // -> Se agrego
+    }
+  }
+
+  @override
+  Future<Product> getProductById(String id) async {
+    try {
+
+      final response = await dio.get('/products/$id');
+      final product = ProductMapper.jsonToEntity(response.data);
+      return product;
+
+      
+    } on DioError catch (e) {
+      
+      if ( e.response?.statusCode == 404 ) throw ProductNotFound();
+      throw Exception();
+
+    } catch (e) {
+      throw Exception();
+    }
+  }
+
+  @override
+  Future<List<Product>> getProductByPage({int limit = 10, int offset = 0}) async {
+
+    final response = await dio.get<List>('/products?limit=$limit&offset=$offset');
+    final List<Product> products = [];
+    for (final product in response.data ?? []) {
+      products.add( ProductMapper.jsonToEntity(product) );
+    }
+
+    return products;
+
+  }
+
+  @override
+  Future<List<Product>> searchProductByTerm(String term) {
+    // TODO: implement searchProductByTerm
+    throw UnimplementedError();
+  }
+
+}
+```
+
+
+
+#### Actualizar producto desde la App
+
+- Abrimos el archivo `product_form_provider.dart`
+
+```dart
+import 'package:basic_auth/config/constants/environment.dart';
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/products/presentation/providers/products_repository_provider.dart';
+import 'package:basic_auth/features/shared/shared.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:formz/formz.dart';
+
+
+//* Provider
+final productFormProvider = StateNotifierProvider.autoDispose.family<ProductFormNotifier, ProductFormState, Product>(
+  (ref, product) {
+
+    final createUpdateCallback = ref.watch(productsRepositoryProvider).createUpdateProduct;  // -> Se agrego createUpdateCallback
+
+    return ProductFormNotifier(
+      product: product,
+      onSubmitCallback: createUpdateCallback    // -> Se agrego
+    );
+  }
+
+);
+
+
+//* Notifier
+class ProductFormNotifier extends StateNotifier<ProductFormState> {
+
+  final Future<Product> Function( Map<String, dynamic> productLike )? onSubmitCallback;
+
+  ProductFormNotifier({
+    this.onSubmitCallback,
+    required Product product,
+  }) : super(
+    ProductFormState(
+      id: product.id,
+      title: Title.dirty(product.title),
+      slug: Slug.dirty(product.slug),
+      price: Price.dirty(product.price),
+      inStock: Stock.dirty(product.stock),
+      sizes: product.sizes,
+      gender: product.gender,
+      description: product.description,
+      tags: product.tags.join(', '),
+      images: product.images,
+    )
+  );
+
+  Future<bool> onFormSubmit() async {
+    _touchedEverything();
+    if ( !state.isFormValid) return false;
+
+    if ( onSubmitCallback == null ) return false;
+
+    final productLike = {
+      
+      'id': state.id,
+      'title': state.title.value,
+      'price': state.price.value,
+      'description': state.description,
+      'slug': state.slug.value,
+      'stock': state.inStock.value,
+      'sizes': state.sizes,
+      'gender': state.gender,
+      'tags': state.tags.split(','),
+      'images': state.images.map(
+        (image) => image.replaceAll('${ Environment.apiUrl }/files/product/', '')
+      ).toList()
+    };
+
+    try {                                         // -> se agrego
+
+      await onSubmitCallback!(productLike);       // -> Se agrego
+
+      return true;                                // -> Se agrego
+      
+    } catch (e) {                                 // -> Se agrego
+      return false;                               // -> Se agrego
+    }   
+
+   
+  }
+
+  void _touchedEverything() {
+    state = state.copyWith(
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value),
+      ])
+    );
+  }
+
+  void onTitleChanged(String value) {
+    state = state.copyWith(
+      title: Title.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onSlugChanged(String value) {
+    state = state.copyWith(
+      slug: Slug.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onPriceChanged(double value) {
+    state = state.copyWith(
+      price: Price.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onStockChanged(int value) {
+    state = state.copyWith(
+      inStock: Stock.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(value)
+      ])
+    );
+  }
+
+  void onSizeChanged(List<String> sizes) {
+    state = state.copyWith(
+      sizes: sizes
+    );
+  }
+
+  void onGenderChanged(String gender) {
+    state = state.copyWith(
+      gender: gender
+    );
+  }
+
+  void onDescriptionChanged(String description) {
+    state = state.copyWith(
+      description: description
+    );
+  }
+
+  void onTagsChanged(String tags) {
+    state = state.copyWith(
+      tags: tags
+    );
+  }
+
+
+}
+
+
+//* State
+class ProductFormState {
+
+  final bool isFormValid;
+  final String? id;
+  final Title title;
+  final Slug slug;
+  final Price price;
+  final List<String> sizes;
+  final String gender;
+  final Stock inStock;
+  final String description;
+  final String tags;
+  final List<String> images;
+
+  ProductFormState({
+    this.isFormValid = false,
+    this.id,
+    this.title = const Title.dirty(''),
+    this.slug = const Slug.dirty(''),
+    this.price = const Price.dirty(0),
+    this.sizes = const [],
+    this.gender = 'men',
+    this.inStock = const Stock.dirty(0),
+    this.description = '',
+    this.tags = '',
+    this.images = const []
+  });
+
+  ProductFormState copyWith({
+    bool? isFormValid,
+    String? id,
+    Title? title,
+    Slug? slug,
+    Price? price,
+    List<String>? sizes,
+    String? gender,
+    Stock? inStock,
+    String? description,
+    String? tags,
+    List<String>? images,
+  }) => ProductFormState(
+    isFormValid: isFormValid ?? this.isFormValid,
+    id: id ?? this.id,
+    title: title ?? this.title,
+    slug: slug ?? this.slug,
+    price: price ?? this.price,
+    sizes: sizes ?? this.sizes,
+    gender: gender ?? this.gender,
+    inStock: inStock ?? this.inStock,
+    description: description ?? this.description,
+    tags: tags ?? this.tags,
+    images: images ?? this.images,
+  );
+}
+```
+
+
+#### Actualizar la pantalla de productos
+
+- Vamos a actualizar el producto en la pantalla productos
+
+- Abrimos el archivo de `products_provider.dart` y creamos el metodo `createOrUpdateProduct`
+
+```dart
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'products_repository_provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+
+//? State Notifier Provider
+
+//* Provider
+final productsProvider = StateNotifierProvider<ProducsNotifier, ProductsState>((ref) {
+
+  final productsRepository = ref.watch( productsRepositoryProvider );
+
+  return ProducsNotifier(productsRepository: productsRepository);
+});
+
+//* Notifier
+class ProducsNotifier extends StateNotifier<ProductsState>{
+
+  final ProductsRepository productsRepository;
+
+  ProducsNotifier({
+    required this.productsRepository
+  }): super( ProductsState() ) {
+    loadNextPage();
+  }
+
+  Future<bool> createOrUpdateProduct(Map<String, dynamic> productLike) async {        // -> Se implementa el nuevo metodo createOrUpdateProduct
+
+    try {
+
+      final product = await productsRepository.createUpdateProduct(productLike);
+      final isProductInList = state.products.any((element) => element.id == product.id);
+
+      if ( !isProductInList ) {
+        state = state.copyWith(
+          products: [...state.products, product]
+        );
+        return true;
+      }
+
+      state = state.copyWith(
+        products: state.products.map(
+          (element) => (element.id == product.id) ? product : element
+        ).toList()
+      );
+
+      return true;
+      
+    } catch (e) {
+      return false;
+    }
+
+  }
+
+  Future loadNextPage() async {
+
+    //* Evitar que se haga muchas peticiones
+    if ( state.isLoading || state.isLastPage ) return;
+
+    state = state.copyWith( isLoading: true );
+
+    final products = await productsRepository
+      .getProductByPage(limit: state.limit, offset: state.offset);
+
+    if ( products.isEmpty ) {
+
+      state = state.copyWith(
+        isLoading: false,
+        isLastPage: true
+      );
+
+      return;
+    }
+
+    state = state.copyWith(
+      isLastPage: false,
+      isLoading: false,
+      offset: state.offset + 10,
+      products: [...state.products, ...products]
+    );
+
+  }
+
+}
+
+//* State
+//* Como quiero que luzca el estado del provider
+class ProductsState {
+
+  final bool isLastPage;
+  final int limit;
+  final int offset;
+  final bool isLoading;
+  final List<Product> products;
+
+  ProductsState({
+    this.isLastPage = false,
+    this.limit = 10,
+    this.offset = 0,
+    this.isLoading = false,
+    this.products = const []
+  }); 
+
+  ProductsState copyWith({
+    bool? isLastPage,
+    int? limit,
+    int? offset,
+    bool? isLoading,
+    List<Product>? products,
+  }) => ProductsState(
+    isLastPage: isLastPage ?? this.isLastPage,
+    limit: limit ?? this.limit,
+    offset: offset ?? this.offset,
+    isLoading: isLoading ?? this.isLoading,
+    products: products ?? this.products,
+  );
+
+}
+```
+
+- Abrimos el archivo `product_form_provider.dart` y agregamos `createUpdateCallback`
+
+```dart
+import 'package:basic_auth/config/constants/environment.dart';
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/products/presentation/providers/products_provider.dart';
+import 'package:basic_auth/features/shared/shared.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:formz/formz.dart';
+
+
+//* Provider
+final productFormProvider = StateNotifierProvider.autoDispose.family<ProductFormNotifier, ProductFormState, Product>(
+  (ref, product) {
+
+    // final createUpdateCallback = ref.watch(productsRepositoryProvider).createUpdateProduct;
+    final createUpdateCallback = ref.watch(productsProvider.notifier).createOrUpdateProduct;  // -> se agrego
+
+    return ProductFormNotifier(
+      product: product,
+      onSubmitCallback: createUpdateCallback
+    );
+  }
+
+);
+
+
+//* Notifier
+class ProductFormNotifier extends StateNotifier<ProductFormState> {
+
+  final Future<bool> Function( Map<String, dynamic> productLike )? onSubmitCallback;  // -> Se cambio a bool
+
+  ProductFormNotifier({
+    this.onSubmitCallback,
+    required Product product,
+  }) : super(
+    ProductFormState(
+      id: product.id,
+      title: Title.dirty(product.title),
+      slug: Slug.dirty(product.slug),
+      price: Price.dirty(product.price),
+      inStock: Stock.dirty(product.stock),
+      sizes: product.sizes,
+      gender: product.gender,
+      description: product.description,
+      tags: product.tags.join(', '),
+      images: product.images,
+    )
+  );
+
+  Future<bool> onFormSubmit() async {
+    _touchedEverything();
+    if ( !state.isFormValid) return false;
+
+    if ( onSubmitCallback == null ) return false;
+
+    final productLike = {
+      
+      'id': state.id,
+      'title': state.title.value,
+      'price': state.price.value,
+      'description': state.description,
+      'slug': state.slug.value,
+      'stock': state.inStock.value,
+      'sizes': state.sizes,
+      'gender': state.gender,
+      'tags': state.tags.split(','),
+      'images': state.images.map(
+        (image) => image.replaceAll('${ Environment.apiUrl }/files/product/', '')
+      ).toList()
+    };
+
+    try {
+      return  await onSubmitCallback!(productLike);
+    } catch (e) {
+      return false;
+    }
+
+   
+  }
+
+  void _touchedEverything() {
+    state = state.copyWith(
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value),
+      ])
+    );
+  }
+
+  void onTitleChanged(String value) {
+    state = state.copyWith(
+      title: Title.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onSlugChanged(String value) {
+    state = state.copyWith(
+      slug: Slug.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onPriceChanged(double value) {
+    state = state.copyWith(
+      price: Price.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onStockChanged(int value) {
+    state = state.copyWith(
+      inStock: Stock.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(value)
+      ])
+    );
+  }
+
+  void onSizeChanged(List<String> sizes) {
+    state = state.copyWith(
+      sizes: sizes
+    );
+  }
+
+  void onGenderChanged(String gender) {
+    state = state.copyWith(
+      gender: gender
+    );
+  }
+
+  void onDescriptionChanged(String description) {
+    state = state.copyWith(
+      description: description
+    );
+  }
+
+  void onTagsChanged(String tags) {
+    state = state.copyWith(
+      tags: tags
+    );
+  }
+
+
+}
+
+
+//* State
+class ProductFormState {
+
+  final bool isFormValid;
+  final String? id;
+  final Title title;
+  final Slug slug;
+  final Price price;
+  final List<String> sizes;
+  final String gender;
+  final Stock inStock;
+  final String description;
+  final String tags;
+  final List<String> images;
+
+  ProductFormState({
+    this.isFormValid = false,
+    this.id,
+    this.title = const Title.dirty(''),
+    this.slug = const Slug.dirty(''),
+    this.price = const Price.dirty(0),
+    this.sizes = const [],
+    this.gender = 'men',
+    this.inStock = const Stock.dirty(0),
+    this.description = '',
+    this.tags = '',
+    this.images = const []
+  });
+
+  ProductFormState copyWith({
+    bool? isFormValid,
+    String? id,
+    Title? title,
+    Slug? slug,
+    Price? price,
+    List<String>? sizes,
+    String? gender,
+    Stock? inStock,
+    String? description,
+    String? tags,
+    List<String>? images,
+  }) => ProductFormState(
+    isFormValid: isFormValid ?? this.isFormValid,
+    id: id ?? this.id,
+    title: title ?? this.title,
+    slug: slug ?? this.slug,
+    price: price ?? this.price,
+    sizes: sizes ?? this.sizes,
+    gender: gender ?? this.gender,
+    inStock: inStock ?? this.inStock,
+    description: description ?? this.description,
+    tags: tags ?? this.tags,
+    images: images ?? this.images,
+  );
+}
+```
+
+- Centramos el titulo del producto en el archivo `product_screen.dart`,
+
+```dart
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:basic_auth/features/shared/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class ProductScreen extends ConsumerWidget {
+  final String productId;
+  const ProductScreen({super.key, required this.productId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productState = ref.watch( productProvider(productId) );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Editar Producto'),
+        actions: [
+          IconButton(
+            onPressed: () {}, 
+            icon: const Icon(Icons.camera_alt_outlined))
+        ],
+      ),
+     body: productState.isLoading
+      ? const FullScreenLoader()
+      : _ProductView(product: productState.product!),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          if ( productState.product == null ) return;
+
+          ref.read(productFormProvider(productState.product!).notifier).onFormSubmit();
+        },
+        child: const Icon(Icons.save_as_outlined),
+      ),
+    );
+  }
+}
+
+class _ProductView extends ConsumerWidget {
+
+  final Product product;
+
+  const _ProductView({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productForm = ref.watch(productFormProvider(product));
+
+    final textStyles = Theme.of(context).textTheme;
+
+    return ListView(
+      children: [
+    
+          SizedBox(
+            height: 250,
+            width: 600,
+            child: _ImageGallery(images: productForm.images ),
+          ),
+    
+          const SizedBox( height: 10 ),
+          Center(
+            child: Text( 
+              productForm.title.value, 
+              style: textStyles.titleSmall,
+              textAlign: TextAlign.center,              // -> Se agrego el textAlign
+            )
+          ),
+          const SizedBox( height: 10 ),
+          _ProductInformation( product: product ),
+          
+        ],
+    );
+  }
+}
+
+
+class _ProductInformation extends ConsumerWidget {
+  final Product product;
+  const _ProductInformation({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref ) {
+
+    final productForm = ref.watch(productFormProvider(product));
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Generales'),
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Nombre',
+            initialValue: productForm.title.value,
+            onChanged: ref.read(productFormProvider(product).notifier).onTitleChanged,
+            errorMessage: productForm.title.errorMessage,
+          ),
+          CustomProductField( 
+            label: 'Slug',
+            initialValue: productForm.slug.value,
+            onChanged: ref.read(productFormProvider(product).notifier).onSlugChanged,
+            errorMessage: productForm.slug.errorMessage,
+          ),
+          CustomProductField( 
+            isBottomField: true,
+            label: 'Precio',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.price.value.toString(),
+             onChanged: (value)
+              => ref.read(productFormProvider(product).notifier)
+                .onPriceChanged(double.tryParse(value) ?? -1),
+            errorMessage: productForm.price.errorMessage,
+          ),
+
+          const SizedBox(height: 15 ),
+          const Text('Extras'),
+
+          _SizeSelector(
+            selectedSizes: productForm.sizes,
+            onSizesChanged: ref.read(productFormProvider(product).notifier).onSizeChanged,
+          ),
+          const SizedBox(height: 5 ),
+          _GenderSelector( 
+            selectedGender: productForm.gender,
+            onGenderChanged: ref.read(productFormProvider(product).notifier).onGenderChanged, 
+          ),
+          
+
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Existencias',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.inStock.value.toString(),
+            onChanged: (value) 
+              => ref.read(productFormProvider(product).notifier)
+                .onStockChanged(int.tryParse(value) ?? -1),
+            errorMessage: productForm.inStock.errorMessage,
+          ),
+
+          CustomProductField( 
+            maxLines: 6,
+            label: 'Descripción',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.description,
+            onChanged: ref.read(productFormProvider(product).notifier).onDescriptionChanged,
+          ),
+
+          CustomProductField( 
+            isBottomField: true,
+            maxLines: 2,
+            label: 'Tags (Separados por coma)',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.tags.join(', '),
+            onChanged: ref.read(productFormProvider(product).notifier).onTagsChanged,
+          ),
+
+
+          const SizedBox(height: 100 ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class _SizeSelector extends StatelessWidget {
+  final List<String> selectedSizes;
+  final List<String> sizes = const['XS','S','M','L','XL','XXL','XXXL'];
+
+  final void Function(List<String> selectedSizes) onSizesChanged; 
+
+  const _SizeSelector({
+    required this.selectedSizes, 
+    required this.onSizesChanged
+  });
+
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton(
+      emptySelectionAllowed: true,
+      showSelectedIcon: false,
+      segments: sizes.map((size) {
+        return ButtonSegment(
+          value: size, 
+          label: Text(size, style: const TextStyle(fontSize: 10))
+        );
+      }).toList(), 
+      selected: Set.from( selectedSizes ),
+      onSelectionChanged: (newSelection) {
+        onSizesChanged(List.from(newSelection));
+      },
+      multiSelectionEnabled: true,
+    );
+  }
+}
+
+class _GenderSelector extends StatelessWidget {
+  final String selectedGender;
+  final List<String> genders = const['men','women','kid'];
+  final List<IconData> genderIcons = const[
+    Icons.man,
+    Icons.woman,
+    Icons.boy,
+  ];
+
+  final void Function(String selectedGender) onGenderChanged;
+
+  const _GenderSelector({
+    required this.selectedGender, 
+    required this.onGenderChanged
+  });
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SegmentedButton(
+        multiSelectionEnabled: false,
+        showSelectedIcon: false,
+        style: const ButtonStyle(visualDensity: VisualDensity.compact ),
+        segments: genders.map((size) {
+          return ButtonSegment(
+            icon: Icon( genderIcons[ genders.indexOf(size) ] ),
+            value: size, 
+            label: Text(size, style: const TextStyle(fontSize: 12))
+          );
+        }).toList(), 
+        selected: { selectedGender },
+        onSelectionChanged: (newSelection) {
+          onGenderChanged(newSelection.first);
+        },
+      ),
+    );
+  }
+}
+
+
+class _ImageGallery extends StatelessWidget {
+  final List<String> images;
+  const _ImageGallery({required this.images});
+
+  @override
+  Widget build(BuildContext context) {
+
+    return PageView(
+      scrollDirection: Axis.horizontal,
+      controller: PageController(
+        viewportFraction: 0.7
+      ),
+      children: images.isEmpty
+        ? [ ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.asset('assets/images/no-image.jpg', fit: BoxFit.cover )) 
+        ]
+        : images.map((e){
+          return ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.network(e, fit: BoxFit.cover,),
+          );
+      }).toList(),
+    );
+  }
+}
+```
+
+
+#### Mostrar mensaje de actualización
+
+- Abrimos el archivo `product_screen.dart` y agregamos el `showSnackbar`
+
+
+```dart
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:basic_auth/features/shared/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class ProductScreen extends ConsumerWidget {
+  final String productId;
+
+  const ProductScreen({super.key, required this.productId});
+
+  void showSnackbar(BuildContext context) {                     // -> Se agrego
+    ScaffoldMessenger.of(context).clearSnackBars();             // -> Se agrego
+    ScaffoldMessenger.of(context).showSnackBar(                 // -> Se agrego
+      const SnackBar(content: Text('Producto Actualizado'))     // -> Se agrego
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productState = ref.watch( productProvider(productId) );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Editar Producto'),
+        actions: [
+          IconButton(
+            onPressed: () {}, 
+            icon: const Icon(Icons.camera_alt_outlined))
+        ],
+      ),
+     body: productState.isLoading
+      ? const FullScreenLoader()
+      : _ProductView(product: productState.product!),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          if ( productState.product == null ) return;
+
+          ref.read(
+            productFormProvider(productState.product!).notifier
+          ).onFormSubmit()
+            .then((value) {                                         // -> Se agrego
+              if ( !value ) return;                                 // -> Se agrego
+              showSnackbar(context);                                // -> Se agrego
+            });
+        },
+        child: const Icon(Icons.save_as_outlined),
+      ),
+    );
+  }
+}
+
+class _ProductView extends ConsumerWidget {
+
+  final Product product;
+
+  const _ProductView({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productForm = ref.watch(productFormProvider(product));
+
+    final textStyles = Theme.of(context).textTheme;
+
+    return ListView(
+      children: [
+    
+          SizedBox(
+            height: 250,
+            width: 600,
+            child: _ImageGallery(images: productForm.images ),
+          ),
+    
+          const SizedBox( height: 10 ),
+          Center(
+            child: Text( 
+              productForm.title.value, 
+              style: textStyles.titleSmall,
+              textAlign: TextAlign.center, 
+            )
+          ),
+          const SizedBox( height: 10 ),
+          _ProductInformation( product: product ),
+          
+        ],
+    );
+  }
+}
+
+
+class _ProductInformation extends ConsumerWidget {
+  final Product product;
+  const _ProductInformation({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref ) {
+
+    final productForm = ref.watch(productFormProvider(product));
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Generales'),
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Nombre',
+            initialValue: productForm.title.value,
+            onChanged: ref.read(productFormProvider(product).notifier).onTitleChanged,
+            errorMessage: productForm.title.errorMessage,
+          ),
+          CustomProductField( 
+            label: 'Slug',
+            initialValue: productForm.slug.value,
+            onChanged: ref.read(productFormProvider(product).notifier).onSlugChanged,
+            errorMessage: productForm.slug.errorMessage,
+          ),
+          CustomProductField( 
+            isBottomField: true,
+            label: 'Precio',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.price.value.toString(),
+             onChanged: (value)
+              => ref.read(productFormProvider(product).notifier)
+                .onPriceChanged(double.tryParse(value) ?? -1),
+            errorMessage: productForm.price.errorMessage,
+          ),
+
+          const SizedBox(height: 15 ),
+          const Text('Extras'),
+
+          _SizeSelector(
+            selectedSizes: productForm.sizes,
+            onSizesChanged: ref.read(productFormProvider(product).notifier).onSizeChanged,
+          ),
+          const SizedBox(height: 5 ),
+          _GenderSelector( 
+            selectedGender: productForm.gender,
+            onGenderChanged: ref.read(productFormProvider(product).notifier).onGenderChanged, 
+          ),
+          
+
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Existencias',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.inStock.value.toString(),
+            onChanged: (value) 
+              => ref.read(productFormProvider(product).notifier)
+                .onStockChanged(int.tryParse(value) ?? -1),
+            errorMessage: productForm.inStock.errorMessage,
+          ),
+
+          CustomProductField( 
+            maxLines: 6,
+            label: 'Descripción',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.description,
+            onChanged: ref.read(productFormProvider(product).notifier).onDescriptionChanged,
+          ),
+
+          CustomProductField( 
+            isBottomField: true,
+            maxLines: 2,
+            label: 'Tags (Separados por coma)',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.tags.join(', '),
+            onChanged: ref.read(productFormProvider(product).notifier).onTagsChanged,
+          ),
+
+
+          const SizedBox(height: 100 ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class _SizeSelector extends StatelessWidget {
+  final List<String> selectedSizes;
+  final List<String> sizes = const['XS','S','M','L','XL','XXL','XXXL'];
+
+  final void Function(List<String> selectedSizes) onSizesChanged; 
+
+  const _SizeSelector({
+    required this.selectedSizes, 
+    required this.onSizesChanged
+  });
+
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton(
+      emptySelectionAllowed: true,
+      showSelectedIcon: false,
+      segments: sizes.map((size) {
+        return ButtonSegment(
+          value: size, 
+          label: Text(size, style: const TextStyle(fontSize: 10))
+        );
+      }).toList(), 
+      selected: Set.from( selectedSizes ),
+      onSelectionChanged: (newSelection) {
+        onSizesChanged(List.from(newSelection));
+      },
+      multiSelectionEnabled: true,
+    );
+  }
+}
+
+class _GenderSelector extends StatelessWidget {
+  final String selectedGender;
+  final List<String> genders = const['men','women','kid'];
+  final List<IconData> genderIcons = const[
+    Icons.man,
+    Icons.woman,
+    Icons.boy,
+  ];
+
+  final void Function(String selectedGender) onGenderChanged;
+
+  const _GenderSelector({
+    required this.selectedGender, 
+    required this.onGenderChanged
+  });
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SegmentedButton(
+        multiSelectionEnabled: false,
+        showSelectedIcon: false,
+        style: const ButtonStyle(visualDensity: VisualDensity.compact ),
+        segments: genders.map((size) {
+          return ButtonSegment(
+            icon: Icon( genderIcons[ genders.indexOf(size) ] ),
+            value: size, 
+            label: Text(size, style: const TextStyle(fontSize: 12))
+          );
+        }).toList(), 
+        selected: { selectedGender },
+        onSelectionChanged: (newSelection) {
+          onGenderChanged(newSelection.first);
+        },
+      ),
+    );
+  }
+}
+
+
+class _ImageGallery extends StatelessWidget {
+  final List<String> images;
+  const _ImageGallery({required this.images});
+
+  @override
+  Widget build(BuildContext context) {
+
+    return PageView(
+      scrollDirection: Axis.horizontal,
+      controller: PageController(
+        viewportFraction: 0.7
+      ),
+      children: images.isEmpty
+        ? [ ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.asset('assets/images/no-image.jpg', fit: BoxFit.cover )) 
+        ]
+        : images.map((e){
+          return ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.network(e, fit: BoxFit.cover,),
+          );
+      }).toList(),
+    );
+  }
+}
+```
+
+
+#### Crear un nuevo producto y el boton del floatingActionButtom
+
+- Abrimos el archivo `products_screen.dart`
+
+```dart
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:basic_auth/features/products/presentation/widgets/widgets.dart';
+import 'package:basic_auth/features/shared/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:go_router/go_router.dart';
+
+class ProductsScreen extends StatelessWidget {
+  const ProductsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+
+    final scaffoldKey = GlobalKey<ScaffoldState>();
+
+    return Scaffold(
+      drawer: SideMenu( scaffoldKey: scaffoldKey ),
+      appBar: AppBar(
+        title: const Text('Products'),
+        actions: [
+          IconButton(
+            onPressed: () {}, 
+            icon: const Icon( Icons.search_rounded )
+          )
+        ],
+      ),
+      body: const _ProductView(),
+      floatingActionButton: FloatingActionButton.extended(    // -> Se agrego el FloatingActionButton
+        label: const Text('Nuevo Producto'),                  // -> Se agrego
+        icon: const Icon(Icons.add),                          // -> Se agrego
+        onPressed: () {
+          context.push('/product/new');                       // -> Se agrego
+        },
+      ),
+    );
+  }
+}
+
+class _ProductView extends ConsumerStatefulWidget {
+  const _ProductView();
+
+  @override
+  _ProductViewState createState() => _ProductViewState();
+}
+
+class _ProductViewState extends ConsumerState {
+
+  final ScrollController scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+
+    scrollController.addListener(() {
+      if ( (scrollController.position.pixels + 400) >= scrollController.position.maxScrollExtent  ) {
+        ref.read( productsProvider.notifier).loadNextPage();
+      }
+    });
+    
+  }
+
+  @override
+  void dispose() {
+    scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+
+    final productsState = ref.watch( productsProvider);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: MasonryGridView.count(
+        controller: scrollController,
+        physics: const BouncingScrollPhysics(),
+        crossAxisCount: 2, 
+        mainAxisSpacing: 20,
+        crossAxisSpacing: 35,
+        itemCount: productsState.products.length,
+        itemBuilder: (context, index) {
+          final product = productsState.products[index];
+          return GestureDetector(
+            onTap: () => context.push('/product/${ product.id }'), 
+            child: ProductCard(product: product)
+          );
+        },
+      ),
+    );
+  }
+}
+```
+
+
+- Abrimos el archivo `product_provider.dart`, para crear un `newEmptyProduct`
+
+```dart
+
+
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'products_repository_provider.dart';
+
+//* Provider usamos el snipper statenotifierprovider
+//* Vamos a usar el autoDispose.family 
+//* autoDispose -> se utiliza para limpiar cada vez que no se va a utilizar
+//* family -> esperar un valor a la hora de utilizar el autoDispose
+final productProvider = StateNotifierProvider.autoDispose.family<ProductNotifier, ProductState, String>(
+  (ref, productId) {
+
+    final productsRepository = ref.watch(productsRepositoryProvider);
+
+    return ProductNotifier(
+      productsRepository: productsRepository, 
+      productId: productId
+  );
+});
+
+//* Notifier
+class ProductNotifier extends StateNotifier<ProductState> {
+
+  final ProductsRepository productsRepository;
+
+  ProductNotifier({
+    required this.productsRepository,
+    required String productId,
+  }): super(ProductState(id: productId)) {
+    loadProduct();
+  }
+
+  Product newEmptyProduct() {                 // -> Se agrego el newEmptyProduct
+    return Product(
+      id: 'new',
+      title: '',
+      price: 0,
+      description: '',
+      slug: '',
+      stock: 0,
+      sizes: [],
+      gender: 'men',
+      tags: [],
+      images: [],
+     );
+  }
+
+  Future<void> loadProduct() async {
+
+    try {
+
+      if ( state.id == 'new' ) {                 // -> Se agrego
+        state = state.copyWith(                  // -> Se agrego
+          isLoading: false,                      // -> Se agrego
+          product: newEmptyProduct()             // -> Se agrego
+        );
+        return;                                  // -> Se agrego
+      }
+
+      final product = await productsRepository.getProductById(state.id);
+
+      state = state.copyWith(
+        isLoading: false,
+        product: product
+      );
+
+    } catch (e) {
+      print(e);
+    }
+
+  }
+
+}
+
+
+//* State
+class ProductState {
+
+  final String id;
+  final Product? product;
+  final bool isLoading;
+  final bool isSaving;
+
+  ProductState({
+    required this.id, 
+    this.product, 
+    this.isLoading = true, 
+    this.isSaving = false,
+  });
+
+  ProductState copyWith({
+    String? id,
+    Product? product,
+    bool? isLoading,
+    bool? isSaving,
+
+  }) => ProductState(
+    id: id ?? this.id,
+    product: product ?? this.product,
+    isLoading: isLoading ?? this.isLoading,
+    isSaving: isSaving ?? this.isSaving,
+  );
+
+}
+```
+
+
+- Abrimos el archivo `product_form_provider.dart` para saber cuando es un producto nuevo se le coloca el identificador `new`
+
+
+```dart
+import 'package:basic_auth/config/constants/environment.dart';
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/products/presentation/providers/products_provider.dart';
+import 'package:basic_auth/features/shared/shared.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:formz/formz.dart';
+
+
+//* Provider
+final productFormProvider = StateNotifierProvider.autoDispose.family<ProductFormNotifier, ProductFormState, Product>(
+  (ref, product) {
+
+    // final createUpdateCallback = ref.watch(productsRepositoryProvider).createUpdateProduct;
+    final createUpdateCallback = ref.watch(productsProvider.notifier).createOrUpdateProduct;
+
+    return ProductFormNotifier(
+      product: product,
+      onSubmitCallback: createUpdateCallback
+    );
+  }
+
+);
+
+
+//* Notifier
+class ProductFormNotifier extends StateNotifier<ProductFormState> {
+
+  final Future<bool> Function( Map<String, dynamic> productLike )? onSubmitCallback;
+
+  ProductFormNotifier({
+    this.onSubmitCallback,
+    required Product product,
+  }) : super(
+    ProductFormState(
+      id: product.id,
+      title: Title.dirty(product.title),
+      slug: Slug.dirty(product.slug),
+      price: Price.dirty(product.price),
+      inStock: Stock.dirty(product.stock),
+      sizes: product.sizes,
+      gender: product.gender,
+      description: product.description,
+      tags: product.tags.join(', '),
+      images: product.images,
+    )
+  );
+
+  Future<bool> onFormSubmit() async {
+    _touchedEverything();
+    if ( !state.isFormValid) return false;
+
+    if ( onSubmitCallback == null ) return false;
+
+    final productLike = {
+      
+      'id': (state.id == 'new') ? null : state.id,        // -> Se agrego
+      'title': state.title.value,
+      'price': state.price.value,
+      'description': state.description,
+      'slug': state.slug.value,
+      'stock': state.inStock.value,
+      'sizes': state.sizes,
+      'gender': state.gender,
+      'tags': state.tags.split(','),
+      'images': state.images.map(
+        (image) => image.replaceAll('${ Environment.apiUrl }/files/product/', '')
+      ).toList()
+    };
+
+    try {
+      return  await onSubmitCallback!(productLike);
+    } catch (e) {
+      return false;
+    }
+
+   
+  }
+
+  void _touchedEverything() {
+    state = state.copyWith(
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value),
+      ])
+    );
+  }
+
+  void onTitleChanged(String value) {
+    state = state.copyWith(
+      title: Title.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onSlugChanged(String value) {
+    state = state.copyWith(
+      slug: Slug.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onPriceChanged(double value) {
+    state = state.copyWith(
+      price: Price.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onStockChanged(int value) {
+    state = state.copyWith(
+      inStock: Stock.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(value)
+      ])
+    );
+  }
+
+  void onSizeChanged(List<String> sizes) {
+    state = state.copyWith(
+      sizes: sizes
+    );
+  }
+
+  void onGenderChanged(String gender) {
+    state = state.copyWith(
+      gender: gender
+    );
+  }
+
+  void onDescriptionChanged(String description) {
+    state = state.copyWith(
+      description: description
+    );
+  }
+
+  void onTagsChanged(String tags) {
+    state = state.copyWith(
+      tags: tags
+    );
+  }
+
+
+}
+
+
+//* State
+class ProductFormState {
+
+  final bool isFormValid;
+  final String? id;
+  final Title title;
+  final Slug slug;
+  final Price price;
+  final List<String> sizes;
+  final String gender;
+  final Stock inStock;
+  final String description;
+  final String tags;
+  final List<String> images;
+
+  ProductFormState({
+    this.isFormValid = false,
+    this.id,
+    this.title = const Title.dirty(''),
+    this.slug = const Slug.dirty(''),
+    this.price = const Price.dirty(0),
+    this.sizes = const [],
+    this.gender = 'men',
+    this.inStock = const Stock.dirty(0),
+    this.description = '',
+    this.tags = '',
+    this.images = const []
+  });
+
+  ProductFormState copyWith({
+    bool? isFormValid,
+    String? id,
+    Title? title,
+    Slug? slug,
+    Price? price,
+    List<String>? sizes,
+    String? gender,
+    Stock? inStock,
+    String? description,
+    String? tags,
+    List<String>? images,
+  }) => ProductFormState(
+    isFormValid: isFormValid ?? this.isFormValid,
+    id: id ?? this.id,
+    title: title ?? this.title,
+    slug: slug ?? this.slug,
+    price: price ?? this.price,
+    sizes: sizes ?? this.sizes,
+    gender: gender ?? this.gender,
+    inStock: inStock ?? this.inStock,
+    description: description ?? this.description,
+    tags: tags ?? this.tags,
+    images: images ?? this.images,
+  );
+}
+```
+
+
+
+#### Ocultar teclado cuando ya no se necesita
+
+- Ocultar en teclado en la pantalla de producto
+
+- Abrimos el archivo `product_screen.dart` y envolvemos el `Scaffold` en un `GestureDetector`
+
+```dart
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:basic_auth/features/shared/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class ProductScreen extends ConsumerWidget {
+  final String productId;
+
+  const ProductScreen({super.key, required this.productId});
+
+  void showSnackbar(BuildContext context) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Producto Actualizado'))
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productState = ref.watch( productProvider(productId) );
+
+    return GestureDetector(                                   // -> Se envielve en un GestureDetector
+      onTap: () => FocusScope.of(context).unfocus(),          // -> Se agrego
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Editar Producto'),
+          actions: [
+            IconButton(
+              onPressed: () {}, 
+              icon: const Icon(Icons.camera_alt_outlined))
+          ],
+        ),
+       body: productState.isLoading
+        ? const FullScreenLoader()
+        : _ProductView(product: productState.product!),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () {
+            if ( productState.product == null ) return;
+    
+            ref.read(
+              productFormProvider(productState.product!).notifier
+            ).onFormSubmit()
+              .then((value) {
+                if ( !value ) return;
+                showSnackbar(context);
+              });
+          },
+          child: const Icon(Icons.save_as_outlined),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductView extends ConsumerWidget {
+
+  final Product product;
+
+  const _ProductView({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productForm = ref.watch(productFormProvider(product));
+
+    final textStyles = Theme.of(context).textTheme;
+
+    return ListView(
+      children: [
+    
+          SizedBox(
+            height: 250,
+            width: 600,
+            child: _ImageGallery(images: productForm.images ),
+          ),
+    
+          const SizedBox( height: 10 ),
+          Center(
+            child: Text( 
+              productForm.title.value, 
+              style: textStyles.titleSmall,
+              textAlign: TextAlign.center, 
+            )
+          ),
+          const SizedBox( height: 10 ),
+          _ProductInformation( product: product ),
+          
+        ],
+    );
+  }
+}
+
+
+class _ProductInformation extends ConsumerWidget {
+  final Product product;
+  const _ProductInformation({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref ) {
+
+    final productForm = ref.watch(productFormProvider(product));
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Generales'),
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Nombre',
+            initialValue: productForm.title.value,
+            onChanged: ref.read(productFormProvider(product).notifier).onTitleChanged,
+            errorMessage: productForm.title.errorMessage,
+          ),
+          CustomProductField( 
+            label: 'Slug',
+            initialValue: productForm.slug.value,
+            onChanged: ref.read(productFormProvider(product).notifier).onSlugChanged,
+            errorMessage: productForm.slug.errorMessage,
+          ),
+          CustomProductField( 
+            isBottomField: true,
+            label: 'Precio',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.price.value.toString(),
+             onChanged: (value)
+              => ref.read(productFormProvider(product).notifier)
+                .onPriceChanged(double.tryParse(value) ?? -1),
+            errorMessage: productForm.price.errorMessage,
+          ),
+
+          const SizedBox(height: 15 ),
+          const Text('Extras'),
+
+          _SizeSelector(
+            selectedSizes: productForm.sizes,
+            onSizesChanged: ref.read(productFormProvider(product).notifier).onSizeChanged,
+          ),
+          const SizedBox(height: 5 ),
+          _GenderSelector( 
+            selectedGender: productForm.gender,
+            onGenderChanged: ref.read(productFormProvider(product).notifier).onGenderChanged, 
+          ),
+          
+
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Existencias',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.inStock.value.toString(),
+            onChanged: (value) 
+              => ref.read(productFormProvider(product).notifier)
+                .onStockChanged(int.tryParse(value) ?? -1),
+            errorMessage: productForm.inStock.errorMessage,
+          ),
+
+          CustomProductField( 
+            maxLines: 6,
+            label: 'Descripción',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.description,
+            onChanged: ref.read(productFormProvider(product).notifier).onDescriptionChanged,
+          ),
+
+          CustomProductField( 
+            isBottomField: true,
+            maxLines: 2,
+            label: 'Tags (Separados por coma)',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.tags.join(', '),
+            onChanged: ref.read(productFormProvider(product).notifier).onTagsChanged,
+          ),
+
+
+          const SizedBox(height: 100 ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class _SizeSelector extends StatelessWidget {
+  final List<String> selectedSizes;
+  final List<String> sizes = const['XS','S','M','L','XL','XXL','XXXL'];
+
+  final void Function(List<String> selectedSizes) onSizesChanged; 
+
+  const _SizeSelector({
+    required this.selectedSizes, 
+    required this.onSizesChanged
+  });
+
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton(
+      emptySelectionAllowed: true,
+      showSelectedIcon: false,
+      segments: sizes.map((size) {
+        return ButtonSegment(
+          value: size, 
+          label: Text(size, style: const TextStyle(fontSize: 10))
+        );
+      }).toList(), 
+      selected: Set.from( selectedSizes ),
+      onSelectionChanged: (newSelection) {
+        FocusScope.of(context).unfocus();               // -> Se agrego
+        onSizesChanged(List.from(newSelection));
+      },
+      multiSelectionEnabled: true,
+    );
+  }
+}
+
+class _GenderSelector extends StatelessWidget {
+  final String selectedGender;
+  final List<String> genders = const['men','women','kid'];
+  final List<IconData> genderIcons = const[
+    Icons.man,
+    Icons.woman,
+    Icons.boy,
+  ];
+
+  final void Function(String selectedGender) onGenderChanged;
+
+  const _GenderSelector({
+    required this.selectedGender, 
+    required this.onGenderChanged
+  });
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SegmentedButton(
+        multiSelectionEnabled: false,
+        showSelectedIcon: false,
+        style: const ButtonStyle(visualDensity: VisualDensity.compact ),
+        segments: genders.map((size) {
+          return ButtonSegment(
+            icon: Icon( genderIcons[ genders.indexOf(size) ] ),
+            value: size, 
+            label: Text(size, style: const TextStyle(fontSize: 12))
+          );
+        }).toList(), 
+        selected: { selectedGender },
+        onSelectionChanged: (newSelection) {
+          FocusScope.of(context).unfocus();               // -> Se agrego
+          onGenderChanged(newSelection.first);
+        },
+      ),
+    );
+  }
+}
+
+
+class _ImageGallery extends StatelessWidget {
+  final List<String> images;
+  const _ImageGallery({required this.images});
+
+  @override
+  Widget build(BuildContext context) {
+
+    return PageView(
+      scrollDirection: Axis.horizontal,
+      controller: PageController(
+        viewportFraction: 0.7
+      ),
+      children: images.isEmpty
+        ? [ ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.asset('assets/images/no-image.jpg', fit: BoxFit.cover )) 
+        ]
+        : images.map((e){
+          return ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.network(e, fit: BoxFit.cover,),
+          );
+      }).toList(),
     );
   }
 }
