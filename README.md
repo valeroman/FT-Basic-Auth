@@ -9509,3 +9509,1227 @@ class _ImageGallery extends StatelessWidget {
   }
 }
 ```
+
+
+### Camara - Galeria y Carga de aechivo
+
+#### PudDev - Cámara y Galería
+
+- Necesitamos algun tipo de comunicación con API nativa (Camara) y para eso usamos el `Image Picker plugin for Flutter`
+
+Documantación: https://pub.dev/packages/image_picker
+
+- Paquete de instalación: `flutter pub add image_picker`
+
+- Configuracion en IOS :
+
+  - Agregar en el archivo Info.plis lo siguiente:
+    - NSPhotoLibraryUsageDescription - describe why your app needs permission for the photo library. - NSCameraUsageDescription - describe why your app needs access to the camera. This is called Privacy - Camera Usage Description in the visual editor.
+    - NSMicrophoneUsageDescription - describe why your app needs access to the microphone, if you intend to record videos. This is called Privacy - Microphone Usage Description in the visual editor.
+
+```dart 
+  <key>NSPhotoLibraryUsageDescription</key>
+	<string>Necesitamos acceso a la galería para seleccionar las fotos de los productos</string>
+
+	<key>NSCameraUsageDescription</key>
+	<string>Necesitamos poder tomar fotos de los productos con la cámara</string>
+
+	<key>NSMicrophoneUsageDescription</key>
+	<string>En caso de subir videos, necesitamos acceso al micrófono</string>
+```
+
+
+#### Patron adaptador - Servicio
+
+- Ir a la carpeta `features -> shared -> infrastructure -> services` y creamos un nuevo archivo llamado `camera_gallery_service.dart`
+
+```dart
+abstract class CameraGalleryService {
+  Future<String?> takePhoto();
+  Future<String?> selectPhoto();
+}
+```
+
+- Creamos otro archivo llamado `camera_gallery_service_impl.dart`
+
+```dart
+import 'package:image_picker/image_picker.dart';
+
+import 'camera_gallery_service.dart';
+
+class CameraGalleryServiceImpl extends CameraGalleryService {
+
+  final ImagePicker _picker = ImagePicker();
+
+  @override
+  Future<String?> selectPhoto() async {
+    
+    final XFile? photo = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+    );
+
+    if ( photo == null ) return null;
+
+    print('Tenemos una imagen ${ photo.path }');
+
+    return photo.path;
+  }
+
+  @override
+  Future<String?> takePhoto() async {
+
+    final XFile? photo = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 80,
+      preferredCameraDevice: CameraDevice.rear
+    );
+
+    if ( photo == null ) return null;
+
+    print('Tenemos una imagen ${ photo.path }');
+
+    return photo.path;
+
+  }
+
+}
+```
+
+
+#### Probar la cámara y galería - Path de la fotografía
+
+- Abrimos el archivo `product_screen.dart`, para agregar el boton de gallery y que funciones ese y el de camara
+
+```dart
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:basic_auth/features/shared/shared.dart';
+import 'package:basic_auth/features/shared/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class ProductScreen extends ConsumerWidget {
+  final String productId;
+
+  const ProductScreen({super.key, required this.productId});
+
+  void showSnackbar(BuildContext context) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Producto Actualizado'))
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productState = ref.watch( productProvider(productId) );
+
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Editar Producto'),
+          actions: [
+
+            IconButton(                                                             // -> Se agrego un nnuevo IconButton
+              onPressed: () async {                                                 // -> Se agrego
+                final photoPath = await CameraGalleryServiceImpl().selectPhoto();   // -> Se agrego
+
+                if ( photoPath == null ) return;                                    // -> Se agrego
+
+                photoPath;                                                          // -> Se agrego
+              }, 
+              icon: const Icon(Icons.photo_library_outlined)                        // -> Se agrego
+            ),
+
+            IconButton(
+              onPressed: () async {
+                 final photoPath = await CameraGalleryServiceImpl().takePhoto();    // -> Se agrego
+
+                if ( photoPath == null ) return;                                    // -> Se agrego
+
+                photoPath;                                                          // -> Se agrego
+              }, 
+              icon: const Icon(Icons.camera_alt_outlined)
+            ),
+          ],
+        ),
+       body: productState.isLoading
+        ? const FullScreenLoader()
+        : _ProductView(product: productState.product!),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () {
+            if ( productState.product == null ) return;
+    
+            ref.read(
+              productFormProvider(productState.product!).notifier
+            ).onFormSubmit()
+              .then((value) {
+                if ( !value ) return;
+                showSnackbar(context);
+              });
+          },
+          child: const Icon(Icons.save_as_outlined),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductView extends ConsumerWidget {
+
+  final Product product;
+
+  const _ProductView({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productForm = ref.watch(productFormProvider(product));
+
+    final textStyles = Theme.of(context).textTheme;
+
+    return ListView(
+      children: [
+    
+          SizedBox(
+            height: 250,
+            width: 600,
+            child: _ImageGallery(images: productForm.images ),
+          ),
+    
+          const SizedBox( height: 10 ),
+          Center(
+            child: Text( 
+              productForm.title.value, 
+              style: textStyles.titleSmall,
+              textAlign: TextAlign.center, 
+            )
+          ),
+          const SizedBox( height: 10 ),
+          _ProductInformation( product: product ),
+          
+        ],
+    );
+  }
+}
+
+
+class _ProductInformation extends ConsumerWidget {
+  final Product product;
+  const _ProductInformation({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref ) {
+
+    final productForm = ref.watch(productFormProvider(product));
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Generales'),
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Nombre',
+            initialValue: productForm.title.value,
+            onChanged: ref.read(productFormProvider(product).notifier).onTitleChanged,
+            errorMessage: productForm.title.errorMessage,
+          ),
+          CustomProductField( 
+            label: 'Slug',
+            initialValue: productForm.slug.value,
+            onChanged: ref.read(productFormProvider(product).notifier).onSlugChanged,
+            errorMessage: productForm.slug.errorMessage,
+          ),
+          CustomProductField( 
+            isBottomField: true,
+            label: 'Precio',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.price.value.toString(),
+             onChanged: (value)
+              => ref.read(productFormProvider(product).notifier)
+                .onPriceChanged(double.tryParse(value) ?? -1),
+            errorMessage: productForm.price.errorMessage,
+          ),
+
+          const SizedBox(height: 15 ),
+          const Text('Extras'),
+
+          _SizeSelector(
+            selectedSizes: productForm.sizes,
+            onSizesChanged: ref.read(productFormProvider(product).notifier).onSizeChanged,
+          ),
+          const SizedBox(height: 5 ),
+          _GenderSelector( 
+            selectedGender: productForm.gender,
+            onGenderChanged: ref.read(productFormProvider(product).notifier).onGenderChanged, 
+          ),
+          
+
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Existencias',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.inStock.value.toString(),
+            onChanged: (value) 
+              => ref.read(productFormProvider(product).notifier)
+                .onStockChanged(int.tryParse(value) ?? -1),
+            errorMessage: productForm.inStock.errorMessage,
+          ),
+
+          CustomProductField( 
+            maxLines: 6,
+            label: 'Descripción',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.description,
+            onChanged: ref.read(productFormProvider(product).notifier).onDescriptionChanged,
+          ),
+
+          CustomProductField( 
+            isBottomField: true,
+            maxLines: 2,
+            label: 'Tags (Separados por coma)',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.tags.join(', '),
+            onChanged: ref.read(productFormProvider(product).notifier).onTagsChanged,
+          ),
+
+
+          const SizedBox(height: 100 ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class _SizeSelector extends StatelessWidget {
+  final List<String> selectedSizes;
+  final List<String> sizes = const['XS','S','M','L','XL','XXL','XXXL'];
+
+  final void Function(List<String> selectedSizes) onSizesChanged; 
+
+  const _SizeSelector({
+    required this.selectedSizes, 
+    required this.onSizesChanged
+  });
+
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton(
+      emptySelectionAllowed: true,
+      showSelectedIcon: false,
+      segments: sizes.map((size) {
+        return ButtonSegment(
+          value: size, 
+          label: Text(size, style: const TextStyle(fontSize: 10))
+        );
+      }).toList(), 
+      selected: Set.from( selectedSizes ),
+      onSelectionChanged: (newSelection) {
+        FocusScope.of(context).unfocus();
+        onSizesChanged(List.from(newSelection));
+      },
+      multiSelectionEnabled: true,
+    );
+  }
+}
+
+class _GenderSelector extends StatelessWidget {
+  final String selectedGender;
+  final List<String> genders = const['men','women','kid'];
+  final List<IconData> genderIcons = const[
+    Icons.man,
+    Icons.woman,
+    Icons.boy,
+  ];
+
+  final void Function(String selectedGender) onGenderChanged;
+
+  const _GenderSelector({
+    required this.selectedGender, 
+    required this.onGenderChanged
+  });
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SegmentedButton(
+        multiSelectionEnabled: false,
+        showSelectedIcon: false,
+        style: const ButtonStyle(visualDensity: VisualDensity.compact ),
+        segments: genders.map((size) {
+          return ButtonSegment(
+            icon: Icon( genderIcons[ genders.indexOf(size) ] ),
+            value: size, 
+            label: Text(size, style: const TextStyle(fontSize: 12))
+          );
+        }).toList(), 
+        selected: { selectedGender },
+        onSelectionChanged: (newSelection) {
+          FocusScope.of(context).unfocus();
+          onGenderChanged(newSelection.first);
+        },
+      ),
+    );
+  }
+}
+
+
+class _ImageGallery extends StatelessWidget {
+  final List<String> images;
+  const _ImageGallery({required this.images});
+
+  @override
+  Widget build(BuildContext context) {
+
+    return PageView(
+      scrollDirection: Axis.horizontal,
+      controller: PageController(
+        viewportFraction: 0.7
+      ),
+      children: images.isEmpty
+        ? [ ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.asset('assets/images/no-image.jpg', fit: BoxFit.cover )) 
+        ]
+        : images.map((e){
+          return ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(20)),
+            child: Image.network(e, fit: BoxFit.cover,),
+          );
+      }).toList(),
+    );
+  }
+}
+```
+
+
+#### Mostrar imágenes desde Paths absolutos
+
+- Creamos un nuevo metodo para añadir una nueva imagen al listado, para eso abrimos el archivo `product_form_provider.dart`
+
+```dart
+import 'package:basic_auth/config/constants/environment.dart';
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/products/presentation/providers/products_provider.dart';
+import 'package:basic_auth/features/shared/shared.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:formz/formz.dart';
+
+
+//* Provider
+final productFormProvider = StateNotifierProvider.autoDispose.family<ProductFormNotifier, ProductFormState, Product>(
+  (ref, product) {
+
+    // final createUpdateCallback = ref.watch(productsRepositoryProvider).createUpdateProduct;
+    final createUpdateCallback = ref.watch(productsProvider.notifier).createOrUpdateProduct;
+
+    return ProductFormNotifier(
+      product: product,
+      onSubmitCallback: createUpdateCallback
+    );
+  }
+
+);
+
+
+//* Notifier
+class ProductFormNotifier extends StateNotifier<ProductFormState> {
+
+  final Future<bool> Function( Map<String, dynamic> productLike )? onSubmitCallback;
+
+  ProductFormNotifier({
+    this.onSubmitCallback,
+    required Product product,
+  }) : super(
+    ProductFormState(
+      id: product.id,
+      title: Title.dirty(product.title),
+      slug: Slug.dirty(product.slug),
+      price: Price.dirty(product.price),
+      inStock: Stock.dirty(product.stock),
+      sizes: product.sizes,
+      gender: product.gender,
+      description: product.description,
+      tags: product.tags.join(', '),
+      images: product.images,
+    )
+  );
+
+  Future<bool> onFormSubmit() async {
+    _touchedEverything();
+    if ( !state.isFormValid) return false;
+
+    if ( onSubmitCallback == null ) return false;
+
+    final productLike = {
+      
+      'id': (state.id == 'new') ? null : state.id,
+      'title': state.title.value,
+      'price': state.price.value,
+      'description': state.description,
+      'slug': state.slug.value,
+      'stock': state.inStock.value,
+      'sizes': state.sizes,
+      'gender': state.gender,
+      'tags': state.tags.split(','),
+      'images': state.images.map(
+        (image) => image.replaceAll('${ Environment.apiUrl }/files/product/', '')
+      ).toList()
+    };
+
+    try {
+      return  await onSubmitCallback!(productLike);
+    } catch (e) {
+      return false;
+    }
+
+   
+  }
+
+  void _touchedEverything() {
+    state = state.copyWith(
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value),
+      ])
+    );
+  }
+
+  void updateProductImages(String path) {       // -> Se agrego el nnuevo metodo updateProductImages
+    state = state.copyWith(                     // -> Se agrego
+      images: [...state.images, path]           // -> Se agrego
+    );
+  }
+
+  void onTitleChanged(String value) {
+    state = state.copyWith(
+      title: Title.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onSlugChanged(String value) {
+    state = state.copyWith(
+      slug: Slug.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(value),
+        Price.dirty(state.price.value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onPriceChanged(double value) {
+    state = state.copyWith(
+      price: Price.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(value),
+        Stock.dirty(state.inStock.value)
+      ])
+    );
+  }
+
+  void onStockChanged(int value) {
+    state = state.copyWith(
+      inStock: Stock.dirty(value),
+      isFormValid: Formz.validate([
+        Title.dirty(state.title.value),
+        Slug.dirty(state.slug.value),
+        Price.dirty(state.price.value),
+        Stock.dirty(value)
+      ])
+    );
+  }
+
+  void onSizeChanged(List<String> sizes) {
+    state = state.copyWith(
+      sizes: sizes
+    );
+  }
+
+  void onGenderChanged(String gender) {
+    state = state.copyWith(
+      gender: gender
+    );
+  }
+
+  void onDescriptionChanged(String description) {
+    state = state.copyWith(
+      description: description
+    );
+  }
+
+  void onTagsChanged(String tags) {
+    state = state.copyWith(
+      tags: tags
+    );
+  }
+
+
+}
+
+
+//* State
+class ProductFormState {
+
+  final bool isFormValid;
+  final String? id;
+  final Title title;
+  final Slug slug;
+  final Price price;
+  final List<String> sizes;
+  final String gender;
+  final Stock inStock;
+  final String description;
+  final String tags;
+  final List<String> images;
+
+  ProductFormState({
+    this.isFormValid = false,
+    this.id,
+    this.title = const Title.dirty(''),
+    this.slug = const Slug.dirty(''),
+    this.price = const Price.dirty(0),
+    this.sizes = const [],
+    this.gender = 'men',
+    this.inStock = const Stock.dirty(0),
+    this.description = '',
+    this.tags = '',
+    this.images = const []
+  });
+
+  ProductFormState copyWith({
+    bool? isFormValid,
+    String? id,
+    Title? title,
+    Slug? slug,
+    Price? price,
+    List<String>? sizes,
+    String? gender,
+    Stock? inStock,
+    String? description,
+    String? tags,
+    List<String>? images,
+  }) => ProductFormState(
+    isFormValid: isFormValid ?? this.isFormValid,
+    id: id ?? this.id,
+    title: title ?? this.title,
+    slug: slug ?? this.slug,
+    price: price ?? this.price,
+    sizes: sizes ?? this.sizes,
+    gender: gender ?? this.gender,
+    inStock: inStock ?? this.inStock,
+    description: description ?? this.description,
+    tags: tags ?? this.tags,
+    images: images ?? this.images,
+  );
+}
+```
+
+
+- Abrimos el archivo `product_screen.dart`, para realizar cambios en el `_ImageGallery` y llamar a la nueva funcion `updateProductImages`
+
+
+```dart
+import 'dart:io';
+
+import 'package:basic_auth/features/products/domain/domain.dart';
+import 'package:basic_auth/features/products/presentation/providers/providers.dart';
+import 'package:basic_auth/features/shared/shared.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class ProductScreen extends ConsumerWidget {
+  final String productId;
+
+  const ProductScreen({super.key, required this.productId});
+
+  void showSnackbar(BuildContext context) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Producto Actualizado'))
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productState = ref.watch( productProvider(productId) );
+
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Editar Producto'),
+          actions: [
+
+            IconButton(
+              onPressed: () async {
+                final photoPath = await CameraGalleryServiceImpl().selectPhoto();
+
+                if ( photoPath == null ) return;
+
+                ref.read(productFormProvider(productState.product!).notifier)
+                .updateProductImages(photoPath);                                  // -> Se agrego
+              }, 
+              icon: const Icon(Icons.photo_library_outlined)
+            ),
+
+            IconButton(
+              onPressed: () async {
+                 final photoPath = await CameraGalleryServiceImpl().takePhoto();
+
+                if ( photoPath == null ) return;
+
+                ref.read(productFormProvider(productState.product!).notifier)
+                .updateProductImages(photoPath);                                // -> Se agrego
+              }, 
+              icon: const Icon(Icons.camera_alt_outlined)
+            ),
+          ],
+        ),
+       body: productState.isLoading
+        ? const FullScreenLoader()
+        : _ProductView(product: productState.product!),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () {
+            if ( productState.product == null ) return;
+    
+            ref.read(
+              productFormProvider(productState.product!).notifier
+            ).onFormSubmit()
+              .then((value) {
+                if ( !value ) return;
+                showSnackbar(context);
+              });
+          },
+          child: const Icon(Icons.save_as_outlined),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductView extends ConsumerWidget {
+
+  final Product product;
+
+  const _ProductView({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+
+    final productForm = ref.watch(productFormProvider(product));
+
+    final textStyles = Theme.of(context).textTheme;
+
+    return ListView(
+      children: [
+    
+          SizedBox(
+            height: 250,
+            width: 600,
+            child: _ImageGallery(images: productForm.images ),
+          ),
+    
+          const SizedBox( height: 10 ),
+          Center(
+            child: Text( 
+              productForm.title.value, 
+              style: textStyles.titleSmall,
+              textAlign: TextAlign.center, 
+            )
+          ),
+          const SizedBox( height: 10 ),
+          _ProductInformation( product: product ),
+          
+        ],
+    );
+  }
+}
+
+
+class _ProductInformation extends ConsumerWidget {
+  final Product product;
+  const _ProductInformation({required this.product});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref ) {
+
+    final productForm = ref.watch(productFormProvider(product));
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Generales'),
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Nombre',
+            initialValue: productForm.title.value,
+            onChanged: ref.read(productFormProvider(product).notifier).onTitleChanged,
+            errorMessage: productForm.title.errorMessage,
+          ),
+          CustomProductField( 
+            label: 'Slug',
+            initialValue: productForm.slug.value,
+            onChanged: ref.read(productFormProvider(product).notifier).onSlugChanged,
+            errorMessage: productForm.slug.errorMessage,
+          ),
+          CustomProductField( 
+            isBottomField: true,
+            label: 'Precio',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.price.value.toString(),
+             onChanged: (value)
+              => ref.read(productFormProvider(product).notifier)
+                .onPriceChanged(double.tryParse(value) ?? -1),
+            errorMessage: productForm.price.errorMessage,
+          ),
+
+          const SizedBox(height: 15 ),
+          const Text('Extras'),
+
+          _SizeSelector(
+            selectedSizes: productForm.sizes,
+            onSizesChanged: ref.read(productFormProvider(product).notifier).onSizeChanged,
+          ),
+          const SizedBox(height: 5 ),
+          _GenderSelector( 
+            selectedGender: productForm.gender,
+            onGenderChanged: ref.read(productFormProvider(product).notifier).onGenderChanged, 
+          ),
+          
+
+          const SizedBox(height: 15 ),
+          CustomProductField( 
+            isTopField: true,
+            label: 'Existencias',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            initialValue: productForm.inStock.value.toString(),
+            onChanged: (value) 
+              => ref.read(productFormProvider(product).notifier)
+                .onStockChanged(int.tryParse(value) ?? -1),
+            errorMessage: productForm.inStock.errorMessage,
+          ),
+
+          CustomProductField( 
+            maxLines: 6,
+            label: 'Descripción',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.description,
+            onChanged: ref.read(productFormProvider(product).notifier).onDescriptionChanged,
+          ),
+
+          CustomProductField( 
+            isBottomField: true,
+            maxLines: 2,
+            label: 'Tags (Separados por coma)',
+            keyboardType: TextInputType.multiline,
+            initialValue: product.tags.join(', '),
+            onChanged: ref.read(productFormProvider(product).notifier).onTagsChanged,
+          ),
+
+
+          const SizedBox(height: 100 ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class _SizeSelector extends StatelessWidget {
+  final List<String> selectedSizes;
+  final List<String> sizes = const['XS','S','M','L','XL','XXL','XXXL'];
+
+  final void Function(List<String> selectedSizes) onSizesChanged; 
+
+  const _SizeSelector({
+    required this.selectedSizes, 
+    required this.onSizesChanged
+  });
+
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton(
+      emptySelectionAllowed: true,
+      showSelectedIcon: false,
+      segments: sizes.map((size) {
+        return ButtonSegment(
+          value: size, 
+          label: Text(size, style: const TextStyle(fontSize: 10))
+        );
+      }).toList(), 
+      selected: Set.from( selectedSizes ),
+      onSelectionChanged: (newSelection) {
+        FocusScope.of(context).unfocus();
+        onSizesChanged(List.from(newSelection));
+      },
+      multiSelectionEnabled: true,
+    );
+  }
+}
+
+class _GenderSelector extends StatelessWidget {
+  final String selectedGender;
+  final List<String> genders = const['men','women','kid'];
+  final List<IconData> genderIcons = const[
+    Icons.man,
+    Icons.woman,
+    Icons.boy,
+  ];
+
+  final void Function(String selectedGender) onGenderChanged;
+
+  const _GenderSelector({
+    required this.selectedGender, 
+    required this.onGenderChanged
+  });
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SegmentedButton(
+        multiSelectionEnabled: false,
+        showSelectedIcon: false,
+        style: const ButtonStyle(visualDensity: VisualDensity.compact ),
+        segments: genders.map((size) {
+          return ButtonSegment(
+            icon: Icon( genderIcons[ genders.indexOf(size) ] ),
+            value: size, 
+            label: Text(size, style: const TextStyle(fontSize: 12))
+          );
+        }).toList(), 
+        selected: { selectedGender },
+        onSelectionChanged: (newSelection) {
+          FocusScope.of(context).unfocus();
+          onGenderChanged(newSelection.first);
+        },
+      ),
+    );
+  }
+}
+
+
+class _ImageGallery extends StatelessWidget {                   // -> Se modifico el _Imagegallery
+  final List<String> images;
+  const _ImageGallery({required this.images});
+
+  @override
+  Widget build(BuildContext context) {
+
+    if ( images.isEmpty ) {
+      ClipRRect(
+        borderRadius: const BorderRadius.all(Radius.circular(20)),
+        child: Image.asset('assets/images/no-image.jpg', fit: BoxFit.cover )
+      ) ;
+    }
+
+    return PageView(
+      scrollDirection: Axis.horizontal,
+      controller: PageController(
+        viewportFraction: 0.7
+      ),
+      children: images.map((image){
+
+        late ImageProvider imageProvider;
+
+        if ( image.startsWith('http') ) {
+          imageProvider = NetworkImage(image);
+        } else {
+          imageProvider = FileImage(File(image));
+        }
+
+
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: ClipRRect(
+              borderRadius: const BorderRadius.all(Radius.circular(20)),
+              child: FadeInImage(
+                fit: BoxFit.cover,
+                image: imageProvider,
+                placeholder: const AssetImage('assets/loaders/bottle-loader.gif'),
+              )
+            ),
+          );
+      }).toList(),
+    );
+  }
+}
+```
+
+
+#### POST - Subir la imagen al backend
+
+- Abrimos el archivo `products_datasource_impl.dart`
+
+
+```dart
+
+import 'package:dio/dio.dart';
+import 'package:basic_auth/config/config.dart';
+import 'package:basic_auth/features/products/domain/domain.dart';
+
+import '../errors/product_errors.dart';
+import '../mappers/product_mapper.dart';
+
+class ProductsDatasourceImpl extends ProductsDatasource {
+
+  //* Configurar despues Dio, por eso se usa late, cuando se utilicen los metodos ya va a estar configurado Dio
+  late final Dio dio;
+  final String accessToken;
+
+  ProductsDatasourceImpl({
+    required this.accessToken
+  }) : dio = Dio(
+    BaseOptions(
+      baseUrl:  Environment.apiUrl,
+      headers: {
+        'Authorization': 'Bearer $accessToken'
+      }
+    )
+  );
+
+  Future<List<String>> _uploadPhotos(List<String> photos) async {                         // -> Se crea el metodo _uploadPhotos
+
+    //* Excluir las fotografias que tengan / en el nombre lo que significa que viene del filesystem
+    final photosToUpload = photos.where((element) => element.contains('/')).toList();
+
+    //* Fotografias que voy a ignorar
+    final photosToIgnore = photos.where((element) => !element.contains('/')).toList();
+
+    //TODO: rear una serie de Futures carga de imagenes
+    final List<Future<String>> uploadJob = [];
+    final newImages = await Future.wait(uploadJob);
+
+    return [...photosToIgnore, ...newImages];
+
+  }
+  
+  @override
+  Future<Product> createUpdateProduct(Map<String, dynamic> productLike) async {
+    
+    try {
+
+      final String? productId = productLike['id'];
+      final String method = (productId == null) ? 'POST' : 'PATCH';
+      final String url = (productId == null) ? '/products' : '/products/$productId';
+
+      productLike.remove('id');
+      productLike['images'] = await _uploadPhotos(productLike['images']);
+
+      throw Exception();
+
+      final response = await dio.request(
+        url,
+        data: productLike,
+        options: Options(
+          method: method
+        )
+      );
+
+      final product = ProductMapper.jsonToEntity(response.data);
+      return product;
+      
+    } catch (e) {
+      throw Exception();
+    }
+  }
+
+  @override
+  Future<Product> getProductById(String id) async {
+    try {
+
+      final response = await dio.get('/products/$id');
+      final product = ProductMapper.jsonToEntity(response.data);
+      return product;
+
+      
+    } on DioError catch (e) {
+      
+      if ( e.response?.statusCode == 404 ) throw ProductNotFound();
+      throw Exception();
+
+    } catch (e) {
+      throw Exception();
+    }
+  }
+
+  @override
+  Future<List<Product>> getProductByPage({int limit = 10, int offset = 0}) async {
+
+    final response = await dio.get<List>('/products?limit=$limit&offset=$offset');
+    final List<Product> products = [];
+    for (final product in response.data ?? []) {
+      products.add( ProductMapper.jsonToEntity(product) );
+    }
+
+    return products;
+
+  }
+
+  @override
+  Future<List<Product>> searchProductByTerm(String term) {
+    // TODO: implement searchProductByTerm
+    throw UnimplementedError();
+  }
+
+}
+```
+
+#### POST - Subir la imagen al backend - Parte 2
+
+```dart
+
+import 'package:dio/dio.dart';
+import 'package:basic_auth/config/config.dart';
+import 'package:basic_auth/features/products/domain/domain.dart';
+
+import '../errors/product_errors.dart';
+import '../mappers/product_mapper.dart';
+
+class ProductsDatasourceImpl extends ProductsDatasource {
+
+  //* Configurar despues Dio, por eso se usa late, cuando se utilicen los metodos ya va a estar configurado Dio
+  late final Dio dio;
+  final String accessToken;
+
+  ProductsDatasourceImpl({
+    required this.accessToken
+  }) : dio = Dio(
+    BaseOptions(
+      baseUrl:  Environment.apiUrl,
+      headers: {
+        'Authorization': 'Bearer $accessToken'
+      }
+    )
+  );
+
+  Future<String> _uploadFile(String path) async {                       // -> Se agrego _uploadFile
+
+    try {
+      
+      final fileName = path.split('/').last;
+
+      final FormData data = FormData.fromMap({
+        'file': MultipartFile.fromFileSync(path, filename: fileName)
+      });
+
+      final response = await dio.post('/files/product', data: data);
+
+      return response.data['image'];
+
+    } catch (e) {
+      throw Exception();
+    }
+
+  }
+
+  Future<List<String>> _uploadPhotos(List<String> photos) async {
+
+    //* Excluir las fotografias que tengan / en el nombre lo que significa que viene del filesystem
+    final photosToUpload = photos.where((element) => element.contains('/')).toList();
+
+    //* Fotografias que voy a ignorar
+    final photosToIgnore = photos.where((element) => !element.contains('/')).toList();
+
+    final List<Future<String>> uploadJob = photosToUpload.map(_uploadFile).toList();    // -> Se agrego
+    final newImages = await Future.wait(uploadJob);
+
+    return [...photosToIgnore, ...newImages];
+
+  }
+  
+  @override
+  Future<Product> createUpdateProduct(Map<String, dynamic> productLike) async {
+    
+    try {
+
+      final String? productId = productLike['id'];
+      final String method = (productId == null) ? 'POST' : 'PATCH';
+      final String url = (productId == null) ? '/products' : '/products/$productId';
+
+      productLike.remove('id');
+      productLike['images'] = await _uploadPhotos(productLike['images']);
+
+      final response = await dio.request(
+        url,
+        data: productLike,
+        options: Options(
+          method: method
+        )
+      );
+
+      final product = ProductMapper.jsonToEntity(response.data);
+      return product;
+      
+    } catch (e) {
+      throw Exception();
+    }
+  }
+
+  @override
+  Future<Product> getProductById(String id) async {
+    try {
+
+      final response = await dio.get('/products/$id');
+      final product = ProductMapper.jsonToEntity(response.data);
+      return product;
+
+      
+    } on DioError catch (e) {
+      
+      if ( e.response?.statusCode == 404 ) throw ProductNotFound();
+      throw Exception();
+
+    } catch (e) {
+      throw Exception();
+    }
+  }
+
+  @override
+  Future<List<Product>> getProductByPage({int limit = 10, int offset = 0}) async {
+
+    final response = await dio.get<List>('/products?limit=$limit&offset=$offset');
+    final List<Product> products = [];
+    for (final product in response.data ?? []) {
+      products.add( ProductMapper.jsonToEntity(product) );
+    }
+
+    return products;
+
+  }
+
+  @override
+  Future<List<Product>> searchProductByTerm(String term) {
+    // TODO: implement searchProductByTerm
+    throw UnimplementedError();
+  }
+
+}
+```
